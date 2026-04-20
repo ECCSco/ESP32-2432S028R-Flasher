@@ -174,11 +174,15 @@
     .btn i {
       font-size: 1rem;
       color: #ffffff;
+      transition: color 0.2s;
     }
     .btn:hover {
       background-color: #ffffff;
       color: #000000;
       border-color: #ffffff;
+    }
+    .btn:hover i {
+      color: #000000;
     }
     .btn-outline-light {
       border: 1px solid #3a3a3a;
@@ -314,7 +318,7 @@
   <div class="sidebar" id="sidebar">
     <h2><i class="fas fa-microchip"></i> Firmware library</h2>
     <div class="firmware-list" id="firmwareListContainer">
-      <div class="fw-item active" data-fw="NanoDrive" data-file="NanoDrive.bin" data-size="0">
+      <div class="fw-item" data-fw="NanoDrive" data-file="NanoDrive.bin" data-size="0">
         <div class="fw-name">NanoDrive <i class="fas fa-calculator"></i></div>
         <div class="fw-desc">Extensive calculator firmware: high‑precision math, scripting engine, real‑time data logging.</div>
       </div>
@@ -338,10 +342,10 @@
       </div>
 
       <div id="activeFirmwareDisplay" class="active-fw-indicator">
-        <i class="fas fa-check-circle"></i> Active firmware: <strong id="activeFwName">NanoDrive</strong> (<span id="activeFwSize">unknown</span> KB)
+        <i class="fas fa-info-circle"></i> No firmware selected
       </div>
 
-      <button id="flashActionBtn" class="btn"><i class="fas fa-bolt"></i> FLASH FIRMWARE</button>
+      <button id="flashActionBtn" class="btn" disabled><i class="fas fa-bolt"></i> FLASH FIRMWARE</button>
 
       <div class="progress-section">
         <div class="progress-bar-container">
@@ -364,10 +368,10 @@
     let portReader = null;
     let portWriter = null;
     let flashingActive = false;
-    let currentFirmwareFile = "NanoDrive.bin";
-    let currentFirmwareName = "NanoDrive";
-    let currentFirmwareSizeBytes = 0;
+    let selectedFirmware = null;
     let firmwareBinaryData = null;
+    let currentFirmwareFile = null;
+    let currentFirmwareName = null;
 
     const selectPortBtn = document.getElementById('selectPortBtn');
     const disconnectBtn = document.getElementById('disconnectPortBtn');
@@ -376,8 +380,7 @@
     const progressFill = document.getElementById('progressFill');
     const progressPercentSpan = document.getElementById('progressPercent');
     const logContainer = document.getElementById('logTerminal');
-    const activeFwNameSpan = document.getElementById('activeFwName');
-    const activeFwSizeSpan = document.getElementById('activeFwSize');
+    const activeFirmwareDisplay = document.getElementById('activeFirmwareDisplay');
     
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebarOverlay');
@@ -517,14 +520,18 @@
 
     function setControlsEnabled(enabled) {
       if (enabled) {
-        flashBtn.disabled = false;
         selectPortBtn.disabled = false;
         if (!selectedPort) disconnectBtn.disabled = true;
         else disconnectBtn.disabled = false;
+        if (selectedFirmware !== null && firmwareBinaryData !== null) {
+          flashBtn.disabled = false;
+        } else {
+          flashBtn.disabled = true;
+        }
       } else {
-        flashBtn.disabled = true;
         selectPortBtn.disabled = true;
         disconnectBtn.disabled = true;
+        flashBtn.disabled = true;
       }
     }
 
@@ -578,20 +585,15 @@
         addLogMessage("No serial port selected. Please select a port first.", "error");
         return;
       }
+      if (!selectedFirmware || !firmwareBinaryData) {
+        addLogMessage("No firmware selected. Please choose a firmware from the sidebar.", "error");
+        return;
+      }
       flashingActive = true;
       setControlsEnabled(false);
       resetProgressUI();
 
-      let firmwareData = await fetchFirmwareBinary(currentFirmwareFile);
-      if (!firmwareData) {
-        addLogMessage("Flashing aborted: firmware not available.", "error");
-        flashingActive = false;
-        setControlsEnabled(true);
-        return;
-      }
-      const total = firmwareData.length;
-      currentFirmwareSizeBytes = total;
-      activeFwSizeSpan.innerText = (total/1024).toFixed(2);
+      const total = firmwareBinaryData.length;
       addLogMessage(`[FLASH] Starting real transmission: ${currentFirmwareName} (${(total/1024).toFixed(2)} KB) via serial`, "info");
       
       await sendCommand("FLASH_START");
@@ -612,7 +614,7 @@
       try {
         while (offset < total && flashingActive) {
           const end = Math.min(offset + chunkSize, total);
-          const chunk = firmwareData.slice(offset, end);
+          const chunk = firmwareBinaryData.slice(offset, end);
           const writeOk = await sendRawData(chunk);
           if (!writeOk) throw new Error("Write failed, port may be disconnected");
           const percent = (end / total) * 100;
@@ -661,23 +663,24 @@
     async function setActiveFirmware(name, file) {
       currentFirmwareName = name;
       currentFirmwareFile = file;
-      activeFwNameSpan.innerText = name;
-      activeFwSizeSpan.innerText = "loading...";
-      addLogMessage(`Selected firmware: ${name} (${file})`, "info");
       const binary = await fetchFirmwareBinary(file);
       if (binary) {
-        currentFirmwareSizeBytes = binary.length;
-        activeFwSizeSpan.innerText = (currentFirmwareSizeBytes/1024).toFixed(2);
+        selectedFirmware = { name, file, size: binary.length };
         firmwareBinaryData = binary;
+        activeFirmwareDisplay.innerHTML = `<i class="fas fa-check-circle"></i> Active firmware: <strong>${name}</strong> (${(binary.length/1024).toFixed(2)} KB)`;
+        addLogMessage(`Firmware selected: ${name} (${(binary.length/1024).toFixed(2)} KB)`, "success");
+        firmwareItems.forEach(item => {
+          const fwFile = item.getAttribute('data-file');
+          if (fwFile === file) item.classList.add('active');
+          else item.classList.remove('active');
+        });
+        if (!flashingActive) setControlsEnabled(true);
       } else {
-        activeFwSizeSpan.innerText = "unavailable";
-        currentFirmwareSizeBytes = 0;
+        selectedFirmware = null;
+        firmwareBinaryData = null;
+        activeFirmwareDisplay.innerHTML = `<i class="fas fa-exclamation-triangle"></i> Failed to load ${name}`;
+        flashBtn.disabled = true;
       }
-      firmwareItems.forEach(item => {
-        const fwFile = item.getAttribute('data-file');
-        if (fwFile === file) item.classList.add('active');
-        else item.classList.remove('active');
-      });
     }
 
     firmwareItems.forEach(item => {
@@ -698,9 +701,8 @@
       selectPortBtn.disabled = true;
     }
 
-    setActiveFirmware("NanoDrive", "NanoDrive.bin");
     updatePortUI();
-    addLogMessage("WebFlasher ready. Select target port, then click FLASH to write real firmware.", "info");
+    addLogMessage("WebFlasher ready. Select a firmware from sidebar, then choose serial port and click FLASH.", "info");
     addLogMessage("Real‑time device logs and exact byte progress are active.", "info");
   })();
 </script>
