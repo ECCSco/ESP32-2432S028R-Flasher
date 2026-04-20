@@ -318,7 +318,7 @@
   <div class="sidebar" id="sidebar">
     <h2><i class="fas fa-microchip"></i> Firmware library</h2>
     <div class="firmware-list" id="firmwareListContainer">
-      <div class="fw-item" data-fw="NanoDrive" data-file="NanoDrive.bin" data-size="0">
+      <div class="fw-item" data-fw="NanoDrive" data-file="NanoDrive.bin">
         <div class="fw-name">NanoDrive <i class="fas fa-calculator"></i></div>
         <div class="fw-desc">Extensive calculator firmware: high‑precision math, scripting engine, real‑time data logging.</div>
       </div>
@@ -337,7 +337,6 @@
       <h3><i class="fas fa-satellite-dish"></i> Flash interface</h3>
       <div class="port-section">
         <button id="selectPortBtn" class="btn btn-outline-light"><i class="fas fa-plug"></i> Select port</button>
-        <button id="disconnectPortBtn" class="btn btn-outline-light" disabled><i class="fas fa-unlink"></i> Disconnect</button>
         <span id="portStatus" class="port-status"><i class="fas fa-circle-notch"></i> No port selected</span>
       </div>
 
@@ -367,6 +366,7 @@
     let selectedPort = null;
     let portReader = null;
     let portWriter = null;
+    let readingActive = false;
     let flashingActive = false;
     let selectedFirmware = null;
     let firmwareBinaryData = null;
@@ -374,7 +374,6 @@
     let currentFirmwareName = null;
 
     const selectPortBtn = document.getElementById('selectPortBtn');
-    const disconnectBtn = document.getElementById('disconnectPortBtn');
     const portStatusSpan = document.getElementById('portStatus');
     const flashBtn = document.getElementById('flashActionBtn');
     const progressFill = document.getElementById('progressFill');
@@ -424,7 +423,7 @@
       }
     }
 
-    async function closeAllStreams() {
+    async function closePort() {
       if (portReader) {
         try { await portReader.cancel(); } catch(e) {}
         try { portReader.releaseLock(); } catch(e) {}
@@ -435,15 +434,11 @@
         try { portWriter.releaseLock(); } catch(e) {}
         portWriter = null;
       }
-    }
-
-    async function disconnectPort() {
-      await closeAllStreams();
       if (selectedPort) {
         try { await selectedPort.close(); } catch(e) {}
         selectedPort = null;
       }
-      addLogMessage("Serial port disconnected.", "info");
+      readingActive = false;
       updatePortUI();
     }
 
@@ -457,8 +452,8 @@
         return;
       }
       try {
+        if (selectedPort) await closePort();
         const port = await navigator.serial.requestPort();
-        if (selectedPort) await disconnectPort();
         await port.open({ baudRate: 115200, dataBits: 8, stopBits: 1, parity: 'none' });
         selectedPort = port;
 
@@ -470,13 +465,14 @@
         const writableStreamClosed = textEncoder.readable.pipeTo(port.writable);
         portWriter = textEncoder.writable.getWriter();
 
+        readingActive = true;
         const portInfo = port.getInfo();
         addLogMessage(`Port connected: ${portInfo.usbProductName || 'device'} (VID:${portInfo.usbVendorId || '?'} PID:${portInfo.usbProductId || '?'}) @115200 baud`, "success");
         updatePortUI();
 
         (async () => {
           try {
-            while (true) {
+            while (readingActive) {
               const { value, done } = await portReader.read();
               if (done) break;
               if (value) {
@@ -484,19 +480,12 @@
                 for (const line of lines) {
                   if (line.trim().length) {
                     addLogMessage(`[DEVICE] ${line.trim()}`, "info");
-                    const lower = line.toLowerCase();
-                    if (lower.includes('ready') || lower.includes('ok') || lower.includes('boot')) {
-                      addLogMessage("Target ready — device reports operational status.", "success");
-                    }
-                    if (lower.includes('flash')) {
-                      addLogMessage("Flash mode detected. Ready for firmware upload.", "success");
-                    }
                   }
                 }
               }
             }
           } catch(e) {
-            if (e.name !== 'AbortError') addLogMessage(`Serial read error: ${e.message}`, "error");
+            if (e.name !== 'AbortError' && readingActive) addLogMessage(`Serial read error: ${e.message}`, "error");
           }
         })();
 
@@ -521,8 +510,6 @@
     function setControlsEnabled(enabled) {
       if (enabled) {
         selectPortBtn.disabled = false;
-        if (!selectedPort) disconnectBtn.disabled = true;
-        else disconnectBtn.disabled = false;
         if (selectedFirmware !== null && firmwareBinaryData !== null) {
           flashBtn.disabled = false;
         } else {
@@ -530,7 +517,6 @@
         }
       } else {
         selectPortBtn.disabled = true;
-        disconnectBtn.disabled = true;
         flashBtn.disabled = true;
       }
     }
@@ -542,10 +528,8 @@
         const vid = info.usbVendorId || '?';
         const pid = info.usbProductId || '?';
         portStatusSpan.innerHTML = `<i class="fas fa-link"></i> Connected: ${name} (${vid}:${pid})`;
-        disconnectBtn.disabled = false;
       } else {
         portStatusSpan.innerHTML = `<i class="fas fa-circle-notch"></i> No port selected`;
-        disconnectBtn.disabled = true;
       }
     }
 
@@ -649,13 +633,6 @@
       }
     }
 
-    disconnectBtn.addEventListener('click', async () => {
-      if (flashingActive) {
-        addLogMessage("Cannot disconnect during flashing.", "error");
-        return;
-      }
-      await disconnectPort();
-    });
     selectPortBtn.addEventListener('click', requestAndConnectPort);
     flashBtn.addEventListener('click', performRealFlash);
 
