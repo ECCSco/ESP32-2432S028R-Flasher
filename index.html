@@ -440,11 +440,21 @@
 
     function resetProgress() { updateProgress(0); }
 
+    function updateFlashButtonState() {
+      if (!flashingInProgress && activePort && selectedFirmwareData) {
+        flashBtn.disabled = false;
+      } else {
+        flashBtn.disabled = true;
+      }
+    }
+
     function setControlsEnabled(enabled) {
       selectPortBtn.disabled = !enabled;
-      if(enabled && selectedFirmwareData && !flashingInProgress) flashBtn.disabled = false;
-      else if(!enabled) flashBtn.disabled = true;
-      else if(!selectedFirmwareData) flashBtn.disabled = true;
+      if (enabled) {
+        updateFlashButtonState();
+      } else {
+        flashBtn.disabled = true;
+      }
     }
 
     async function closeSerial() {
@@ -667,6 +677,7 @@
         readingLoop = true;
         updatePortUI();
         addLog(`Port connected @115200 baud`, "success");
+        updateFlashButtonState();
         (async () => {
           while(readingLoop && portReader) {
             try {
@@ -698,8 +709,7 @@
           if(el.getAttribute('data-file') === file) el.classList.add('active');
           else el.classList.remove('active');
         });
-        if(!flashingInProgress && activePort) flashBtn.disabled = false;
-        else if(!flashingInProgress) flashBtn.disabled = true;
+        updateFlashButtonState();
       } catch(e) {
         addLog(`Failed to load ${name}: ${e.message}`, "error");
         selectedFirmwareData = null;
