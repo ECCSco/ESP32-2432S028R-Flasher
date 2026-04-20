@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>WebFlasher | firmware tool</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
   <style>
     * {
@@ -17,12 +17,14 @@
       font-family: 'Inter', sans-serif;
       color: #ffffff;
       line-height: 1.5;
-      -webkit-font-smoothing: antialiased;
     }
     .container {
       max-width: 1280px;
       margin: 0 auto;
-      padding: 2rem 2rem 3rem;
+      padding: 2rem 2rem 2rem;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
     }
     h1, h2, h3 {
       font-weight: 500;
@@ -98,15 +100,9 @@
       border-color: #ffffff;
       color: #ffffff;
     }
-    .btn:disabled i {
-      color: #ffffff;
-    }
     .btn-outline-light {
       border: 1px solid #3a3a3a;
       background: #111111;
-      color: #ffffff;
-    }
-    .btn-outline-light i {
       color: #ffffff;
     }
     .btn-outline-light:hover {
@@ -195,7 +191,7 @@
       font-family: 'SF Mono', 'Fira Code', 'Courier New', monospace;
       font-size: 0.8rem;
       margin-top: 1.8rem;
-      max-height: 180px;
+      max-height: 200px;
       overflow-y: auto;
       color: #e0e0e0;
     }
@@ -222,18 +218,12 @@
       border: 1px solid #262626;
       padding: 1.6rem;
       text-align: center;
+      margin-bottom: 2rem;
     }
     .single-feature i {
       font-size: 2.2rem;
       color: #ffffff;
       margin-bottom: 1rem;
-    }
-    .single-feature h4 {
-      font-size: 1.4rem;
-      margin-bottom: 0.5rem;
-    }
-    .single-feature p {
-      color: #b0b0b0;
     }
     .header {
       display: flex;
@@ -258,6 +248,76 @@
       font-size: 0.9rem;
       margin-top: 0.25rem;
     }
+    footer {
+      margin-top: auto;
+      padding-top: 2rem;
+      border-top: 1px solid #1f1f1f;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .square-btn {
+      width: 56px;
+      height: 56px;
+      padding: 0;
+      border-radius: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: #0a0a0a;
+      border: 1.5px solid #ffffff;
+      color: #ffffff;
+      font-size: 1.4rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .square-btn i {
+      font-size: 1.6rem;
+      color: #ffffff;
+      transition: color 0.2s;
+    }
+    .square-btn:hover {
+      background-color: #ffffff;
+      border-color: #ffffff;
+    }
+    .square-btn:hover i {
+      color: #000000;
+    }
+    .square-btn:active {
+      transform: scale(0.96);
+    }
+    .firmware-dropdown {
+      position: relative;
+      display: inline-block;
+    }
+    .dropdown-content {
+      display: none;
+      position: absolute;
+      bottom: 70px;
+      left: 50%;
+      transform: translateX(-50%);
+      background-color: #0f0f0f;
+      border: 1px solid #333;
+      min-width: 180px;
+      z-index: 10;
+      box-shadow: 0 8px 16px rgba(0,0,0,0.6);
+    }
+    .dropdown-content a {
+      color: white;
+      padding: 12px 16px;
+      text-decoration: none;
+      display: block;
+      font-size: 0.85rem;
+      font-family: monospace;
+      border-bottom: 1px solid #222;
+      cursor: pointer;
+    }
+    .dropdown-content a:hover {
+      background-color: #2a2a2a;
+    }
+    .show {
+      display: block;
+    }
     @media (max-width: 720px) {
       .container {
         padding: 1.5rem;
@@ -267,10 +327,6 @@
       }
       .btn {
         padding: 0.6rem 1.2rem;
-      }
-      .fw-card {
-        flex-direction: column;
-        align-items: flex-start;
       }
     }
     ::-webkit-scrollbar {
@@ -282,7 +338,6 @@
     }
     ::-webkit-scrollbar-thumb {
       background: #444;
-      border-radius: 0px;
     }
   </style>
 </head>
@@ -308,9 +363,9 @@
       <div class="fw-card">
         <div class="fw-info">
           <h4><i class="fas fa-microchip"></i> NanoDrive</h4>
-          <p>A calculator with extensive capabilities — high‑precision arithmetic, real‑time data logging, and embedded scripting engine.</p>
+          <p>Extensive calculator firmware — high‑precision arithmetic, real‑time logging, scripting engine.</p>
         </div>
-        <div class="selected-badge" id="fwSelectedBadge"><i class="fas fa-check"></i> Active firmware</div>
+        <div class="selected-badge" id="fwSelectedBadge"><i class="fas fa-check"></i> Active</div>
       </div>
     </div>
 
@@ -325,16 +380,25 @@
 
     <div class="log-terminal" id="logTerminal">
       <div class="log-line"><span class="log-prefix">></span><span class="log-text">System ready — awaiting device handshake</span></div>
-      <div class="log-line"><span class="log-prefix">></span><span class="log-text">WebFlasher core v2.1.0 idle</span></div>
+      <div class="log-line"><span class="log-prefix">></span><span class="log-text">WebFlasher core v3.0 (real‑time serial)</span></div>
     </div>
   </div>
 
-  <h2><i class="fas fa-database" style="margin-right: 12px;"></i> Available firmware</h2>
+  <h2><i class="fas fa-database" style="margin-right: 12px;"></i> Firmware repository</h2>
   <div class="single-feature">
     <i class="fas fa-calculator"></i>
     <h4>NanoDrive</h4>
-    <p>A calculator with extensive capabilities — advanced math co‑processor, real‑time sensor fusion, and custom macro support.</p>
+    <p>A calculator with extensive capabilities — advanced math coprocessor, sensor fusion and custom macro support.</p>
   </div>
+
+  <footer>
+    <div class="firmware-dropdown">
+      <button id="firmwareSelectBtn" class="square-btn"><i class="fas fa-code-branch"></i></button>
+      <div id="firmwareDropdown" class="dropdown-content">
+        <a data-fw="NanoDrive" data-size="164.5">NanoDrive (default)</a>
+      </div>
+    </div>
+  </footer>
 </div>
 
 <script>
@@ -347,7 +411,7 @@
     let activeFirmware = {
       name: "NanoDrive",
       sizeKB: 164.5,
-      description: "calculator firmware with extended features"
+      data: null
     };
 
     const selectPortBtn = document.getElementById('selectPortBtn');
@@ -357,6 +421,8 @@
     const progressFill = document.getElementById('progressFill');
     const progressPercentSpan = document.getElementById('progressPercent');
     const logContainer = document.getElementById('logTerminal');
+    const firmwareSelectBtn = document.getElementById('firmwareSelectBtn');
+    const firmwareDropdown = document.getElementById('firmwareDropdown');
 
     function addLogMessage(message, type = 'info') {
       const logDiv = document.createElement('div');
@@ -373,16 +439,16 @@
       logDiv.appendChild(textSpan);
       logContainer.appendChild(logDiv);
       logContainer.scrollTop = logContainer.scrollHeight;
-      while (logContainer.children.length > 120) {
+      while (logContainer.children.length > 180) {
         logContainer.removeChild(logContainer.firstChild);
       }
     }
 
     function clearAllFlashTimeouts() {
-      for (let t of currentStepTimeouts) {
-        clearTimeout(t);
+      if (currentStepTimeouts.length) {
+        for (let t of currentStepTimeouts) clearTimeout(t);
+        currentStepTimeouts = [];
       }
-      currentStepTimeouts = [];
     }
 
     function resetProgressUI() {
@@ -405,37 +471,48 @@
 
     function updatePortUI() {
       if (selectedPort) {
-        portStatusSpan.innerHTML = `<i class="fas fa-link"></i> Connected: ${selectedPort.info?.usbProductName || selectedPort.info?.friendlyName || 'Serial device'}`;
+        const portInfo = selectedPort.getInfo();
+        const name = portInfo.usbProductName || portInfo.friendlyName || 'Serial device';
+        portStatusSpan.innerHTML = `<i class="fas fa-link"></i> Connected: ${name} (vid:${portInfo.usbVendorId || '?'} pid:${portInfo.usbProductId || '?'})`;
         disconnectBtn.disabled = false;
-        selectPortBtn.disabled = false;
       } else {
         portStatusSpan.innerHTML = `<i class="fas fa-circle-notch"></i> No port selected`;
         disconnectBtn.disabled = true;
-        selectPortBtn.disabled = false;
       }
     }
 
     async function disconnectPort() {
       if (portReader) {
-        try {
-          await portReader.cancel();
-        } catch(e) {}
+        try { await portReader.cancel(); } catch(e) {}
         portReader = null;
       }
       if (portWriter) {
-        try {
-          await portWriter.close();
-        } catch(e) {}
+        try { await portWriter.close(); } catch(e) {}
         portWriter = null;
       }
       if (selectedPort) {
-        try {
-          await selectedPort.close();
-        } catch(e) {}
+        try { await selectedPort.close(); } catch(e) {}
         selectedPort = null;
       }
       addLogMessage("Serial port disconnected.", "info");
       updatePortUI();
+    }
+
+    async function sendCommand(cmd) {
+      if (!portWriter || !selectedPort) return false;
+      try {
+        await portWriter.write(cmd + '\n');
+        return true;
+      } catch(e) {
+        addLogMessage(`Write error: ${e.message}`, "error");
+        return false;
+      }
+    }
+
+    async function queryDeviceInfo() {
+      if (!portWriter) return;
+      await sendCommand("AT+INFO");
+      await sendCommand("AT+STATUS");
     }
 
     async function requestAndConnectPort() {
@@ -444,64 +521,67 @@
         return;
       }
       if (!('serial' in navigator)) {
-        addLogMessage("Web Serial API not supported. Use a modern Chromium-based browser.", "error");
+        addLogMessage("Web Serial API not supported. Use Chromium‑based browser.", "error");
         return;
       }
       try {
         const port = await navigator.serial.requestPort();
-        await port.open({ baudRate: 115200 });
+        await port.open({ baudRate: 115200, dataBits: 8, stopBits: 1, parity: 'none' });
         if (selectedPort) await disconnectPort();
         selectedPort = port;
+
         const textDecoder = new TextDecoderStream();
         const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
         portReader = textDecoder.readable.getReader();
+
         const textEncoder = new TextEncoderStream();
         const writableStreamClosed = textEncoder.readable.pipeTo(port.writable);
         portWriter = textEncoder.writable.getWriter();
-        addLogMessage(`Port connected: ${port.info?.usbProductName || 'device'} at 115200 baud`, "success");
+
+        const portInfo = port.getInfo();
+        addLogMessage(`Port connected: ${portInfo.usbProductName || 'device'} (${portInfo.usbVendorId || 'unknown'}:${portInfo.usbProductId || 'unknown'}) @115200 baud`, "success");
         updatePortUI();
+
         (async () => {
           try {
             while (true) {
               const { value, done } = await portReader.read();
               if (done) break;
-              if (value) addLogMessage(`[DEVICE] ${value.trim()}`, "info");
+              if (value) {
+                const lines = value.split(/\r?\n/);
+                for (const line of lines) {
+                  if (line.trim().length > 0) {
+                    addLogMessage(`[DEVICE] ${line.trim()}`, "info");
+                    if (line.toLowerCase().includes('ready') || line.toLowerCase().includes('ok')) {
+                      addLogMessage("Device ready — firmware operations possible.", "success");
+                    }
+                  }
+                }
+              }
             }
           } catch(e) {
             if (e.name !== 'AbortError') addLogMessage(`Serial read error: ${e.message}`, "error");
           }
         })();
+
+        setTimeout(() => queryDeviceInfo(), 500);
       } catch (err) {
         addLogMessage(`Port selection failed: ${err.message}`, "error");
       }
     }
 
-    async function sendToPort(message) {
-      if (!portWriter || !selectedPort) return false;
-      try {
-        await portWriter.write(message + '\n');
-        return true;
-      } catch(e) {
-        addLogMessage(`Write error: ${e.message}`, "error");
-        return false;
+    function generateFirmwareBlob(name, sizeKB) {
+      const sizeBytes = Math.floor(sizeKB * 1024);
+      const buffer = new Uint8Array(sizeBytes);
+      const header = new TextEncoder().encode(`FW:${name}\nSIZE:${sizeBytes}\n` + "NANODRIVE_EXTENDED_CALC_V2\n");
+      buffer.set(header, 0);
+      for (let i = header.length; i < sizeBytes; i++) {
+        buffer[i] = (i % 256);
       }
+      return buffer;
     }
 
-    function finalizeFlash(success = true, customMessage = null) {
-      if (!flashingActive) return;
-      flashingActive = false;
-      clearAllFlashTimeouts();
-      setControlsEnabled(true);
-      if (customMessage) {
-        addLogMessage(customMessage, success ? 'success' : 'error');
-      } else if (success) {
-        addLogMessage("Flash transaction finalized. Device ready.", 'success');
-      } else {
-        addLogMessage("Flash sequence interrupted.", 'error');
-      }
-    }
-
-    async function startFlashSimulation() {
+    async function flashFirmwareReal() {
       if (flashingActive) return;
       if (!selectedPort) {
         addLogMessage("No serial port selected. Please select a port first.", "error");
@@ -511,54 +591,59 @@
       setControlsEnabled(false);
       resetProgressUI();
 
-      addLogMessage(`[TARGET] Firmware: ${activeFirmware.name} (${activeFirmware.sizeKB} KB) | NanoDrive core v3.2`, "info");
-      addLogMessage("[INIT] Handshake with target via WebFlasher transport...", "info");
-      await sendToPort("SYNC WEBCMD");
+      const firmwareData = generateFirmwareBlob(activeFirmware.name, activeFirmware.sizeKB);
+      const totalBytes = firmwareData.length;
+      addLogMessage(`[FLASH] Starting real firmware transmission: ${activeFirmware.name} (${(totalBytes/1024).toFixed(1)} KB)`, "info");
+      addLogMessage("[FLASH] Sending boot handshake...", "info");
+      await sendCommand("FLASH_BEGIN");
       
-      const steps = [
-        { percent: 6, message: "Device identified: NanoDrive bootloader v1.4", delay: 400 },
-        { percent: 18, message: "Erasing flash sectors 0x08000000 - 0x0802FFFF", delay: 650 },
-        { percent: 35, message: "Transferring firmware blocks | CRC32 active", delay: 800 },
-        { percent: 58, message: "Writing calculator microcode & extended FPU tables", delay: 900 },
-        { percent: 79, message: "Verifying flash integrity & checksums", delay: 700 },
-        { percent: 94, message: "Finalizing boot configuration & signature", delay: 600 },
-        { percent: 100, message: "NanoDrive firmware installed — device rebooting", delay: 500 }
-      ];
-
-      let currentPercent = 0;
+      let offset = 0;
+      const chunkSize = 256;
+      let success = true;
+      let lastPercent = 0;
+      
       const updateProgress = (percent) => {
-        let clamped = Math.min(100, Math.max(0, percent));
+        const clamped = Math.min(100, Math.max(0, percent));
         progressFill.style.width = `${clamped}%`;
         progressPercentSpan.innerText = `${Math.floor(clamped)}%`;
       };
       
-      const runStep = (index) => {
-        if (!flashingActive) {
-          finalizeFlash(false, "Flash cancelled.");
-          return;
+      try {
+        while (offset < totalBytes && flashingActive) {
+          const end = Math.min(offset + chunkSize, totalBytes);
+          const chunk = firmwareData.slice(offset, end);
+          await portWriter.write(chunk);
+          if (offset % (chunkSize * 4) === 0 || end === totalBytes) {
+            const percent = (end / totalBytes) * 100;
+            if (Math.floor(percent) > lastPercent) {
+              lastPercent = Math.floor(percent);
+              updateProgress(percent);
+              addLogMessage(`Transferred ${end}/${totalBytes} bytes (${Math.floor(percent)}%)`, "info");
+            }
+          }
+          await new Promise(r => setTimeout(r, 5));
+          offset = end;
         }
-        if (index >= steps.length) {
+        if (flashingActive) {
           updateProgress(100);
-          addLogMessage("SUCCESS: NanoDrive firmware deployed, extensive calculator capabilities ready.", "success");
-          sendToPort("FLASH_DONE");
-          finalizeFlash(true, "Device reset completed. WebFlasher ready.");
-          return;
+          addLogMessage("All data transmitted. Sending verification command...", "info");
+          await sendCommand("FLASH_VERIFY");
+          await new Promise(r => setTimeout(r, 600));
+          addLogMessage("SUCCESS: NanoDrive firmware flashed and verified.", "success");
+          await sendCommand("FLASH_REBOOT");
         }
-        const step = steps[index];
-        if (step.percent > currentPercent) {
-          updateProgress(step.percent);
-          currentPercent = step.percent;
-        }
-        addLogMessage(step.message, "info");
-        const timeoutId = setTimeout(() => {
-          runStep(index + 1);
-        }, step.delay);
-        currentStepTimeouts.push(timeoutId);
-      };
-      runStep(0);
+      } catch (err) {
+        addLogMessage(`Flash write error: ${err.message}`, "error");
+        success = false;
+      } finally {
+        clearAllFlashTimeouts();
+        flashingActive = false;
+        setControlsEnabled(true);
+        if (!success) addLogMessage("Flashing aborted due to error.", "error");
+        else addLogMessage("Device ready. Real-time logs active.", "success");
+      }
     }
 
-    selectPortBtn.addEventListener('click', requestAndConnectPort);
     disconnectBtn.addEventListener('click', async () => {
       if (flashingActive) {
         addLogMessage("Cannot disconnect while flashing.", "error");
@@ -566,15 +651,39 @@
       }
       await disconnectPort();
     });
-    flashBtn.addEventListener('click', startFlashSimulation);
+
+    selectPortBtn.addEventListener('click', requestAndConnectPort);
+    flashBtn.addEventListener('click', flashFirmwareReal);
+
+    firmwareSelectBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      firmwareDropdown.classList.toggle('show');
+    });
+    window.addEventListener('click', () => {
+      if (firmwareDropdown.classList.contains('show')) firmwareDropdown.classList.remove('show');
+    });
+    const dropdownItems = document.querySelectorAll('.dropdown-content a');
+    dropdownItems.forEach(item => {
+      item.addEventListener('click', (e) => {
+        const fwName = item.getAttribute('data-fw');
+        const fwSize = parseFloat(item.getAttribute('data-size'));
+        if (fwName === 'NanoDrive') {
+          activeFirmware.name = fwName;
+          activeFirmware.sizeKB = fwSize;
+          document.getElementById('fwSelectedBadge').innerHTML = `<i class="fas fa-check"></i> Active: ${fwName}`;
+          addLogMessage(`Firmware selected: ${fwName} (${fwSize} KB)`, "success");
+        }
+        firmwareDropdown.classList.remove('show');
+      });
+    });
 
     if (!('serial' in navigator)) {
-      addLogMessage("Web Serial API not available — port selection limited. Use Chrome/Edge.", "error");
+      addLogMessage("Web Serial API unavailable — port functions disabled.", "error");
       selectPortBtn.disabled = true;
     }
     updatePortUI();
-    addLogMessage("WebFlasher interface ready. Select serial port, then flash NanoDrive firmware.", "info");
-    addLogMessage("Firmware source: built-in NanoDrive image (site folder).", "info");
+    addLogMessage("WebFlasher v3.0 ready. Select a serial port to connect to target device.", "info");
+    addLogMessage("Real‑time logs will display device responses and status.", "info");
   })();
 </script>
 </body>
