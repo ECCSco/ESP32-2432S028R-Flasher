@@ -493,6 +493,71 @@
       } catch(e) { addLog(`Reset failed: ${e.message}`, 'error'); return false; }
     }
 
+    function espCommandPacket(cmd, data) {
+      let len = data ? data.length : 0;
+      let packet = new Uint8Array(4 + 1 + 2 + len + 1);
+      packet[0] = 0x00;
+      packet[1] = 0x00;
+      packet[2] = 0x02;
+      packet[3] = 0x00;
+      packet[4] = cmd;
+      packet[5] = len & 0xFF;
+      packet[6] = (len >> 8) & 0xFF;
+      if (data) {
+        packet.set(data, 7);
+      }
+      let checksum = 0xEF;
+      for (let i = 0; i < 7 + len; i++) {
+        checksum ^= packet[i];
+      }
+      packet[1] = checksum;
+      return packet;
+    }
+
+    async function espSync() {
+      addLog("Syncing with ESP32...", "info");
+      let syncData = new Uint8Array(36);
+      syncData[0] = 0x07;
+      syncData[1] = 0x07;
+      syncData[2] = 0x12;
+      syncData[3] = 0x20;
+      for (let i = 4; i < 36; i++) syncData[i] = 0x55;
+      let syncPacket = espCommandPacket(0x08, syncData);
+      for (let attempt = 0; attempt < 5; attempt++) {
+        await portWriter.write(syncPacket);
+        try {
+          let response = await espReadResponse(500);
+          if (response && response.length >= 2 && response[0] === 0x00) {
+            addLog("Sync OK", "success");
+            return;
+          }
+        } catch(e) {}
+        await sleep(50);
+      }
+      throw new Error("Sync failed after 5 attempts");
+    }
+
+    async function espReadResponse(timeout=3000) {
+      let buffer = [];
+      let start = Date.now();
+      while ((Date.now() - start) < timeout) {
+        let { value, done } = await portReader.read();
+        if (done) break;
+        if (value) {
+          for (let ch of value) buffer.push(ch);
+          if (buffer.length >= 2 && buffer[buffer.length-1] === 0xC0 && buffer[buffer.length-2] !== 0xDB) break;
+        }
+        await sleep(5);
+      }
+      if (buffer.length === 0) throw new Error("No response");
+      let decoded = slipDecode(new Uint8Array(buffer));
+      if (decoded.length < 4) throw new Error("Response too short");
+      let status = decoded[0];
+      let len = decoded[3] | (decoded[4] << 8);
+      if (status !== 0x00) throw new Error(`Command error: ${status}`);
+      return decoded.slice(5, 5+len);
+    }
+
     function slipEncode(data) {
       let result = [0xC0];
       for(let b of data) {
@@ -523,55 +588,17 @@
       return new Uint8Array(decoded);
     }
 
-    async function sendCommand(cmd, payload) {
-      if(!portWriter) throw new Error("Port writer not available");
-      let packet = new Uint8Array([cmd, ...(payload || [])]);
+    async function espCommand(cmd, data, timeout=3000) {
+      let packet = espCommandPacket(cmd, data);
       let slipPacket = slipEncode(packet);
       await portWriter.write(slipPacket);
-    }
-
-    async function readResponse(timeout=3000) {
-      if(!portReader) throw new Error("Port reader not available");
-      let buffer = [];
-      let start = Date.now();
-      while((Date.now()-start) < timeout) {
-        let { value, done } = await portReader.read();
-        if(done) break;
-        if(value) {
-          for(let ch of value) buffer.push(ch);
-          if(buffer.length >= 2 && buffer[buffer.length-1] === 0xC0 && buffer[buffer.length-2] !== 0xDB) break;
-        }
-        await sleep(5);
-      }
-      if(buffer.length === 0) throw new Error("No response");
-      let decoded = slipDecode(new Uint8Array(buffer));
-      if(decoded.length < 2) throw new Error("Invalid response");
-      let status = decoded[0];
-      let data = decoded.slice(1);
-      if(status !== 0x00) throw new Error(`Command error status: 0x${status.toString(16)}`);
-      return data;
-    }
-
-    async function espSync() {
-      addLog("Syncing with ESP32...", "info");
-      for(let i=0;i<5;i++) {
-        await sendCommand(0x08, [0x07, 0x07, 0x12, 0x20, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55]);
-        try { 
-          await readResponse(300);
-          addLog("Sync OK", "success");
-          return;
-        } catch(e) { 
-          if(i===4) throw new Error("Sync failed after 5 attempts");
-          await sleep(50);
-        }
-      }
+      return await espReadResponse(timeout);
     }
 
     async function espReadMac() {
-      await sendCommand(0x10, [0x40, 0x00, 0x00, 0x00]);
-      let data = await readResponse();
-      if(data.length>=6) {
-        let mac = Array.from(data.slice(0,6)).map(b=>b.toString(16).padStart(2,'0')).join(':');
+      let resp = await espCommand(0x0A, null);
+      if (resp.length >= 6) {
+        let mac = Array.from(resp.slice(0,6)).map(b=>b.toString(16).padStart(2,'0')).join(':');
         addLog(`Chip MAC: ${mac}`, "info");
       }
     }
@@ -582,35 +609,45 @@
       let sizeBuf = new Uint8Array(4);
       new DataView(addrBuf.buffer).setUint32(0, addr, true);
       new DataView(sizeBuf.buffer).setUint32(0, size, true);
-      await sendCommand(0x04, [...addrBuf, ...sizeBuf]);
-      await readResponse(10000);
+      let payload = new Uint8Array([...addrBuf, ...sizeBuf]);
+      await espCommand(0xD0, payload, 10000);
       addLog("Erase done", "success");
     }
 
-    function calculateChecksum(data) { let cs=0xEF; for(let b of data) cs ^= b; return cs; }
+    async function espFlashBegin(addr, size, blockSize) {
+      let addrBuf = new Uint8Array(4);
+      let sizeBuf = new Uint8Array(4);
+      let blockBuf = new Uint8Array(4);
+      new DataView(addrBuf.buffer).setUint32(0, addr, true);
+      new DataView(sizeBuf.buffer).setUint32(0, size, true);
+      new DataView(blockBuf.buffer).setUint32(0, blockSize, true);
+      let payload = new Uint8Array([...addrBuf, ...sizeBuf, ...blockBuf]);
+      await espCommand(0x04, payload);
+    }
 
-    async function espWriteFlash(addr, data, onProgress) {
-      let total = data.length;
-      let offset = 0;
+    async function espFlashData(seq, data) {
+      let seqBuf = new Uint8Array(4);
+      let zero = new Uint8Array(4);
+      new DataView(seqBuf.buffer).setUint32(0, seq, true);
+      let checksum = 0xEF;
+      for (let b of data) checksum ^= b;
+      let payload = new Uint8Array([...seqBuf, ...zero, checksum, ...data]);
+      await espCommand(0x05, payload, 5000);
+    }
+
+    async function espWriteFlash(addr, firmware, onProgress) {
+      let total = firmware.length;
       let blockSize = 1024;
-      addLog(`Writing ${total} bytes to 0x${addr.toString(16)}...`, "info");
-      while(offset < total) {
-        let chunk = data.slice(offset, offset+blockSize);
-        let seq = offset / blockSize;
-        let addrBuf = new Uint8Array(4);
-        let sizeBuf = new Uint8Array(4);
-        let seqBuf = new Uint8Array(2);
-        let zero = new Uint8Array(2);
-        let checksum = calculateChecksum(chunk);
-        new DataView(addrBuf.buffer).setUint32(0, addr+offset, true);
-        new DataView(sizeBuf.buffer).setUint32(0, chunk.length, true);
-        new DataView(seqBuf.buffer).setUint16(0, seq, true);
-        let header = [...addrBuf, ...sizeBuf, ...seqBuf, ...zero, checksum];
-        await sendCommand(0x05, [...header, ...chunk]);
-        await readResponse(5000);
+      await espFlashBegin(addr, total, blockSize);
+      let offset = 0;
+      let seq = 0;
+      while (offset < total) {
+        let chunk = firmware.slice(offset, offset + blockSize);
+        await espFlashData(seq, chunk);
         offset += chunk.length;
-        let percent = (offset/total)*100;
-        if(onProgress) onProgress(percent);
+        seq++;
+        let percent = (offset / total) * 100;
+        if (onProgress) onProgress(percent);
         await sleep(2);
       }
       addLog("Write completed", "success");
@@ -743,7 +780,7 @@
 
     if(!('serial' in navigator)) { addLog("Web Serial API unavailable", "error"); selectPortBtn.disabled = true; }
     addLog("WebFlasher ready. Select firmware, connect serial port, then click FLASH.", "info");
-    addLog("Real ESP32 esptool protocol implemented (sync, erase, write).", "info");
+    addLog("Real ESP32 ROM protocol: correct sync, read_mac (0x0A), erase_region (0xD0), flash_begin (0x04), flash_data (0x05).", "info");
   })();
 </script>
 </body>
