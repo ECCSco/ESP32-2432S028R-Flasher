@@ -473,24 +473,28 @@
       }
     }
 
-    async function enterBootloader() {
-      if (!activePort) return false;
-      try {
-        await activePort.setSignals({ dataTerminalReady: true, requestToSend: false });
-        await sleep(50);
-        await activePort.setSignals({ dataTerminalReady: true, requestToSend: true });
-        await sleep(50);
-        await activePort.setSignals({ dataTerminalReady: false, requestToSend: true });
-        await sleep(50);
-        await activePort.setSignals({ dataTerminalReady: true, requestToSend: false });
-        await sleep(50);
-        await activePort.setSignals({ dataTerminalReady: false, requestToSend: false });
-        await sleep(100);
-        return true;
-      } catch(e) {
-        addLog(`Bootloader entry failed: ${e.message}`, 'error');
-        return false;
-      }
+    async function classicReset() {
+      if (!activePort) return;
+      await activePort.setSignals({ dataTerminalReady: false, requestToSend: false });
+      await sleep(100);
+      await activePort.setSignals({ dataTerminalReady: true, requestToSend: false });
+      await sleep(100);
+      await activePort.setSignals({ dataTerminalReady: false, requestToSend: true });
+      await sleep(100);
+      await activePort.setSignals({ dataTerminalReady: true, requestToSend: true });
+      await sleep(100);
+      await activePort.setSignals({ dataTerminalReady: false, requestToSend: false });
+      await sleep(100);
+    }
+
+    async function hardReset() {
+      if (!activePort) return;
+      await activePort.setSignals({ dataTerminalReady: false, requestToSend: false });
+      await sleep(100);
+      await activePort.setSignals({ dataTerminalReady: true, requestToSend: false });
+      await sleep(100);
+      await activePort.setSignals({ dataTerminalReady: false, requestToSend: false });
+      await sleep(100);
     }
 
     function slipEncode(data) {
@@ -669,18 +673,6 @@
       await espFlashEnd(false);
     }
 
-    async function hardReset() {
-      if (!activePort) return;
-      try {
-        await activePort.setSignals({ dataTerminalReady: false, requestToSend: false });
-        await sleep(200);
-        await activePort.setSignals({ dataTerminalReady: true, requestToSend: false });
-        await sleep(200);
-        await activePort.setSignals({ dataTerminalReady: false, requestToSend: false });
-        addLog("Device rebooted", "success");
-      } catch(e) { addLog(`Reset failed: ${e.message}`, "error"); }
-    }
-
     async function startFlashing() {
       if (flashingInProgress) return;
       if (!activePort) { addLog("No serial port selected", "error"); return; }
@@ -691,7 +683,8 @@
       let success = false;
       try {
         addLog(`Flashing ${selectedFirmwareName} (${(selectedFirmwareData.length/1024).toFixed(2)} KB)`, "info");
-        if (!(await enterBootloader())) throw new Error("Failed to enter bootloader");
+        addLog("Entering bootloader...", "info");
+        await classicReset();
         await sleep(200);
         await espSync();
         await espReadMac();
@@ -700,6 +693,7 @@
         await espWriteFlash(flashAddr, selectedFirmwareData, (p) => { updateProgress(p); if (Math.floor(p) % 10 === 0 && p < 100 && p > 0) addLog(`Progress ${Math.floor(p)}%`, "info"); });
         updateProgress(100);
         addLog("Firmware successfully written!", "success");
+        addLog("Rebooting device...", "info");
         await hardReset();
         success = true;
       } catch(err) {
@@ -796,7 +790,7 @@
 
     if (!('serial' in navigator)) { addLog("Web Serial API unavailable", "error"); selectPortBtn.disabled = true; }
     addLog("WebFlasher ready. Select firmware, connect serial port, then click FLASH.", "info");
-    addLog("ESP32 ROM protocol: correct sync, read_mac (0x0A), erase_region (0xD0), flash_begin (0x04), flash_data (0x05), flash_end (0x06).", "info");
+    addLog("ESP32 ROM protocol with correct classic reset (DTR/RTS) from esptool-js.", "info");
   })();
 </script>
 </body>
