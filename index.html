@@ -10,7 +10,7 @@
   <script type="importmap">
     {
       "imports": {
-        "esptool-js": "https://unpkg.com/esptool-js@0.5.0/dist/index.js"
+        "esptool-js": "https://cdn.jsdelivr.net/npm/esptool-js@0.5.0/dist/index.js"
       }
     }
   </script>
@@ -462,7 +462,8 @@
 
   function updatePortUI() {
     if (selectedPort) {
-      portStatusSpan.innerHTML = `<i class="fas fa-link"></i> Connected: ${selectedPort.getInfo().usbProductName || 'ESP32'} (${selectedPort.getInfo().usbVendorId || '?'}:${selectedPort.getInfo().usbProductId || '?'})`;
+      const info = selectedPort.getInfo();
+      portStatusSpan.innerHTML = `<i class="fas fa-link"></i> Connected: ${info.usbProductName || 'ESP32'} (${info.usbVendorId || '?'}:${info.usbProductId || '?'})`;
     } else {
       portStatusSpan.innerHTML = `<i class="fas fa-circle-notch"></i> No port selected`;
     }
@@ -532,38 +533,28 @@
       await esploader.main();
       addLog("Connected to ESP32 in download mode", "success");
 
-      const flashOptions = {
-        flashSize: 'keep',
-        flashMode: 'keep',
-        flashFreq: 'keep',
-        eraseAll: false
-      };
-
-      const image = [
-        { data: selectedFirmwareData, address: 0x10000 }
-      ];
-
-      addLog("Erasing flash region (0x10000)...", "info");
-      await esploader.eraseRegion(0x10000, selectedFirmwareData.length);
-      addLog("Erase done, writing firmware...", "info");
-
       const writeCallback = (event) => {
         if (event.type === 'progress') {
           const percent = (event.bytesWritten / event.totalBytes) * 100;
           updateProgress(percent);
-          if (Math.floor(percent) % 10 === 0 && percent < 100) {
+          if (Math.floor(percent) % 10 === 0 && percent < 100 && percent > 0) {
             addLog(`Write progress: ${Math.floor(percent)}%`, "info");
           }
         }
       };
 
+      addLog("Erasing flash region (0x10000)...", "info");
+      await esploader.eraseRegion(0x10000, selectedFirmwareData.length);
+      addLog("Erase completed", "success");
+
+      addLog("Writing firmware to address 0x10000...", "info");
       await esploader.writeFlash(0x10000, selectedFirmwareData, writeCallback);
       updateProgress(100);
       addLog("Firmware written successfully!", "success");
 
-      addLog("Verifying checksum...", "info");
+      addLog("Verifying firmware...", "info");
       await esploader.verifyFlash(0x10000, selectedFirmwareData);
-      addLog("Checksum verified.", "success");
+      addLog("Verification passed", "success");
 
       addLog("Rebooting device...", "info");
       await esploader.hardReset();
