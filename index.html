@@ -455,13 +455,19 @@
     if (flashingInProgress) { addLog("Flashing in progress, cannot change port", "error"); return; }
     if (!('serial' in navigator)) { addLog("Web Serial API not supported. Use Chrome/Edge.", "error"); return; }
     try {
+      if (selectedPort) {
+        try {
+          await selectedPort.close();
+        } catch(e) {}
+        selectedPort = null;
+      }
       const port = await navigator.serial.requestPort();
       selectedPort = port;
       const info = port.getInfo();
       const name = info.usbProductName || info.friendlyName || 'Serial device';
       const vid = info.usbVendorId || '?';
       const pid = info.usbProductId || '?';
-      portStatusSpan.innerHTML = `<i class="fas fa-check-circle"></i> Port selected: ${name} (${vid}:${pid}) <i class="fas fa-hourglass-half"></i> (will open on flash)`;
+      portStatusSpan.innerHTML = `<i class="fas fa-check-circle"></i> Port selected: ${name} (${vid}:${pid})`;
       addLog(`Port selected: ${name}`, "success");
       if (selectedFirmwareData) flashBtn.disabled = false;
       else flashBtn.disabled = true;
@@ -485,6 +491,8 @@
     let success = false;
     try {
       addLog(`Flashing ${selectedFirmwareName} (${(selectedFirmwareData.length/1024).toFixed(2)} KB) ...`, "info");
+      await selectedPort.open({ baudRate: 115200, dataBits: 8, stopBits: 1, parity: 'none', flowControl: 'none' });
+      addLog(`Serial port opened @115200 baud`, "success");
       transport = new Transport(selectedPort);
       esptoolInstance = new ESPLoader({
         transport: transport,
@@ -496,9 +504,7 @@
         }
       });
       await esptoolInstance.main();
-      addLog(`Chip: ${esptoolInstance.chipName}`, "success");
-      const mac = await esptoolInstance.readMac();
-      if (mac) addLog(`MAC: ${mac.join(':')}`, "info");
+      addLog("Connected to ESP device", "success");
       const flashAddress = 0x10000;
       addLog(`Writing firmware to address 0x${flashAddress.toString(16)}...`, "info");
       await esptoolInstance.flashData(
@@ -522,6 +528,11 @@
       if (esptoolInstance) {
         try { await esptoolInstance.transport.disconnect(); } catch(e) {}
       }
+      try {
+        if (selectedPort && selectedPort.readable && selectedPort.writable) {
+          await selectedPort.close();
+        }
+      } catch(e) {}
       setControlsEnabled(true);
       if (success) addLog("Device ready.", "success");
       else addLog("Flashing failed, please retry.", "error");
