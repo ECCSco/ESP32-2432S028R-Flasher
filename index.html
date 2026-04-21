@@ -118,212 +118,440 @@
 </div>
 
 <script>
-const sleep = ms => new Promise(r=>setTimeout(r,ms));
-
-function log(t){document.getElementById("log").textContent+=t+"\n"}
-
-const slipEncode = buf=>{
-  let out=[0xc0];
-  for(let b of buf){
-    if(b===0xdb) out.push(0xdb,0xdd);
-    else if(b===0xc0) out.push(0xdb,0xdc);
-    else out.push(b);
-  }
-  out.push(0xc0);
-  return out;
-};
-
-const pack=(fmt,...vals)=>{
-  let out=[],i=0,le=true;
-  for(let c of fmt){
-    if(c=="<") le=true;
-    else if(c==">") le=false;
-    else{
-      let v=vals[i++];
-      let dv=new DataView(new ArrayBuffer(4));
-      if(c=="B") dv.setUint8(0,v);
-      if(c=="H") dv.setUint16(0,v,le);
-      if(c=="I") dv.setUint32(0,v,le);
-      let size=c=="B"?1:c=="H"?2:4;
-      for(let j=0;j<size;j++) out.push(dv.getUint8(j));
+(function(){
+  const slipEncode = (buffer) => {
+    let encoded = [0xc0];
+    for (let byte of buffer) {
+      if (byte == 0xdb) encoded = encoded.concat([0xdb, 0xdd]);
+      else if (byte == 0xc0) encoded = encoded.concat([0xdb, 0xdc]);
+      else encoded.push(byte);
     }
-  }
-  return out;
-};
-
-const unpack=(fmt,bytes)=>{
-  let out=[],p=0,le=true;
-  for(let c of fmt){
-    if(c=="<") le=true;
-    else if(c==">") le=false;
-    else{
-      let size=c=="B"?1:c=="H"?2:4;
-      let dv=new DataView(new ArrayBuffer(size));
-      for(let i=0;i<size;i++) dv.setUint8(i,bytes[p++]);
-      if(c=="B") out.push(dv.getUint8(0));
-      if(c=="H") out.push(dv.getUint16(0,le));
-      if(c=="I") out.push(dv.getUint32(0,le));
+    encoded.push(0xc0);
+    return encoded;
+  };
+  const toByteArray = (str) => {
+    let arr = [];
+    for (let i = 0; i < str.length; i++) {
+      let c = str.charCodeAt(i);
+      if (c <= 0xff) arr.push(c);
     }
-  }
-  return out;
-};
-
-class ESP{
-  constructor(port){
-    this.port=port;
-    this.buf=[];
-  }
-
-  async setSignals(dtr,rts){
-    await this.port.setSignals({dataTerminalReady:dtr,requestToSend:rts});
-  }
-
-  async resetBoot(){
-    await this.setSignals(true,true);
-    await sleep(120);
-    await this.setSignals(false,true);
-    await sleep(120);
-    await this.setSignals(false,false);
-    await sleep(120);
-    await sleep(300);
-  }
-
-  async resetRun(){
-    await this.setSignals(true,false);
-    await sleep(120);
-    await this.setSignals(false,false);
-    await sleep(120);
-  }
-
-  async init(){
-    await this.resetBoot();
-    this.reader=this.port.readable.getReader();
-    this.writer=this.port.writable.getWriter();
-    this.readLoop();
-    for(let i=0;i<3;i++){
-      try{
-        await this.sync();
-        return;
-      }catch(e){
-        await this.resetBoot();
+    return arr;
+  };
+  const toHex = (v, s=2) => "0x" + v.toString(16).padStart(s, "0").toUpperCase();
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  
+  const pack = (fmt, ...vals) => {
+    let idx = 0;
+    if (fmt.replace(/[<>]/g, '').length !== vals.length) throw new Error("Pack length mismatch");
+    let le = true, out = [];
+    for (let ch of fmt) {
+      if (ch === '<') le = true;
+      else if (ch === '>') le = false;
+      else {
+        let v = vals[idx++];
+        let buf = new ArrayBuffer(4);
+        let dv = new DataView(buf);
+        if (ch === 'B') dv.setUint8(0, v);
+        else if (ch === 'H') dv.setUint16(0, v, le);
+        else if (ch === 'I') dv.setUint32(0, v, le);
+        else if (ch === 'b') dv.setInt8(0, v);
+        else if (ch === 'h') dv.setInt16(0, v, le);
+        else if (ch === 'i') dv.setInt32(0, v, le);
+        else throw new Error("Unknown pack type");
+        for (let i = 0; i < (ch === 'B' ? 1 : (ch === 'H' ? 2 : 4)); i++) out.push(dv.getUint8(i));
       }
     }
-    throw "sync fail";
-  }
-
-  async readLoop(){
-    while(true){
-      let {value,done}=await this.reader.read();
-      if(done) break;
-      if(value) this.buf.push(...value);
-    }
-  }
-
-  async send(op,data,chk=0){
-    let h=pack("<BBHI",0,op,data.length,chk);
-    let p=slipEncode([...h,...data]);
-    await this.writer.write(new Uint8Array(p));
-  }
-
-  async readPkt(timeout=3000){
-    let t=Date.now();
-    while(this.buf.length===0){
-      if(Date.now()-t>timeout) throw "timeout";
-      await sleep(5);
-    }
-    let b=this.buf.shift();
-    while(b!==0xc0){
-      if(this.buf.length===0){
-        if(Date.now()-t>timeout) throw "timeout";
-        await sleep(5);
-        continue;
+    return out;
+  };
+  const unpack = (fmt, bytes) => {
+    let ptr = 0, le = true, out = [];
+    for (let ch of fmt) {
+      if (ch === '<') le = true;
+      else if (ch === '>') le = false;
+      else {
+        let size = (ch === 'B' || ch === 'b') ? 1 : ((ch === 'H' || ch === 'h') ? 2 : 4);
+        let buf = new ArrayBuffer(size);
+        let dv = new DataView(buf);
+        for (let i = 0; i < size; i++) dv.setUint8(i, bytes[ptr++]);
+        if (ch === 'B') out.push(dv.getUint8(0));
+        else if (ch === 'H') out.push(dv.getUint16(0, le));
+        else if (ch === 'I') out.push(dv.getUint32(0, le));
+        else if (ch === 'b') out.push(dv.getInt8(0));
+        else if (ch === 'h') out.push(dv.getInt16(0, le));
+        else if (ch === 'i') out.push(dv.getInt32(0, le));
+        else throw new Error("Unknown unpack type");
       }
-      b=this.buf.shift();
     }
-    let out=[],esc=false;
-    while(true){
-      if(this.buf.length===0){
-        if(Date.now()-t>timeout) throw "timeout";
-        await sleep(5);
-        continue;
+    return out;
+  };
+
+  const ESP_ROM_BAUD = 115200;
+  const SYNC_PACKET = toByteArray("\x07\x07\x12 UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU");
+  const ESP_SYNC = 0x08;
+  const ESP_READ_REG = 0x0a;
+  const ESP_WRITE_REG = 0x09;
+  const ESP_SPI_ATTACH = 0x0d;
+  const ESP_FLASH_BEGIN = 0x02;
+  const ESP_FLASH_DATA = 0x03;
+  const ESP_FLASH_END = 0x04;
+  const ESP_CHECKSUM_MAGIC = 0xef;
+  const DEFAULT_TIMEOUT = 3000;
+  const SYNC_TIMEOUT = 100;
+  const ERASE_REGION_TIMEOUT_PER_MB = 30000;
+  const FLASH_WRITE_SIZE = 0x400;
+  const FLASH_SECTOR_SIZE = 0x1000;
+  const CHIP_DETECT_MAGIC_REG_ADDR = 0x40001000;
+  const CHIP_FAMILY_ESP8266 = 0x8266;
+  const CHIP_FAMILY_ESP32 = 0x32;
+  const CHIP_FAMILY_ESP32S2 = 0x3252;
+  const CHIP_FAMILY_ESP32S3 = 0x3253;
+  const CHIP_FAMILY_ESP32C2 = 0x32c2;
+  const CHIP_FAMILY_ESP32C3 = 0x32c3;
+  const CHIP_FAMILY_ESP32C6 = 0x32c6;
+  const CHIP_FAMILY_ESP32H2 = 0x3272;
+  const CHIP_DETECT_MAGIC_VALUES = {
+    0xfff0c101: { name: "ESP8266", family: CHIP_FAMILY_ESP8266 },
+    0x00f01d83: { name: "ESP32", family: CHIP_FAMILY_ESP32 },
+    0x000007c6: { name: "ESP32-S2", family: CHIP_FAMILY_ESP32S2 },
+    0x9: { name: "ESP32-S3", family: CHIP_FAMILY_ESP32S3 },
+    0xeb004136: { name: "ESP32-S3(beta2)", family: CHIP_FAMILY_ESP32S3 },
+    0x6f51306f: { name: "ESP32-C2", family: CHIP_FAMILY_ESP32C2 },
+    0x7c41a06f: { name: "ESP32-C2", family: CHIP_FAMILY_ESP32C2 },
+    0x6921506f: { name: "ESP32-C3", family: CHIP_FAMILY_ESP32C3 },
+    0x1b31506f: { name: "ESP32-C3", family: CHIP_FAMILY_ESP32C3 },
+    0xd7b73e80: { name: "ESP32-H2", family: CHIP_FAMILY_ESP32H2 },
+    0x0da1806f: { name: "ESP32-C6(beta)", family: CHIP_FAMILY_ESP32C6 },
+    0x2ce0806f: { name: "ESP32-C6", family: CHIP_FAMILY_ESP32C6 },
+  };
+
+  class ESPLoader {
+    constructor(port, logger) {
+      this.port = port;
+      this.logger = logger;
+      this._inputBuffer = [];
+      this.chipFamily = null;
+      this._reader = null;
+      this._writer = null;
+    }
+
+    async setSignals(dtr, rts) {
+      await this.port.setSignals({ dataTerminalReady: dtr, requestToSend: rts });
+    }
+
+    async hardReset(bootloader) {
+      this.logger.log("Hard reset...");
+      if (bootloader) {
+        await this.setSignals(true, true);
+        await sleep(120);
+        await this.setSignals(false, true);
+        await sleep(120);
+        await this.setSignals(false, false);
+        await sleep(120);
+      } else {
+        await this.setSignals(true, false);
+        await sleep(120);
+        await this.setSignals(false, false);
+        await sleep(120);
       }
-      b=this.buf.shift();
-      if(esc){
-        if(b===0xdc) out.push(0xc0);
-        else if(b===0xdd) out.push(0xdb);
-        esc=false;
-      }else if(b===0xdb) esc=true;
-      else if(b===0xc0) return new Uint8Array(out);
-      else out.push(b);
+      await sleep(300);
     }
-  }
 
-  async resp(op){
-    let p=await this.readPkt();
-    let [r,o,l,v]=unpack("<BBHI",p.slice(0,8));
-    if(o!==op) throw "bad op";
-    return [v,p.slice(8,8+l)];
-  }
-
-  async cmd(op,data){
-    await this.send(op,data);
-    return await this.resp(op);
-  }
-
-  async sync(){
-    let sync=Array(36).fill(0x55);
-    sync[0]=0x07;sync[1]=0x07;sync[2]=0x12;
-    await this.send(0x08,sync);
-    for(let i=0;i<8;i++){
-      try{
-        let [_,d]=await this.resp(0x08);
-        if(d[0]===0 && d[1]===0) return;
-      }catch{}
+    async preciseBootloaderSequence() {
+      this.logger.log("Emulating Reset+Boot buttons: BOOT hold...");
+      await this.setSignals(false, true);
       await sleep(50);
+      this.logger.log("RESET press...");
+      await this.setSignals(true, true);
+      await sleep(50);
+      this.logger.log("RESET release...");
+      await this.setSignals(false, true);
+      await sleep(50);
+      this.logger.log("BOOT release...");
+      await this.setSignals(false, false);
+      await sleep(200);
     }
-    throw "sync fail";
-  }
 
-  chk(data){
-    let c=0xef;
-    for(let b of data) c^=b;
-    return c;
-  }
-
-  async flash(addr,data){
-    let bs=0x400;
-    let blocks=Math.ceil(data.length/bs);
-    await this.cmd(0x02,pack("<IIII",data.length,blocks,bs,addr));
-    let seq=0;
-    for(let i=0;i<data.length;i+=bs){
-      let chunk=Array.from(data.slice(i,i+bs));
-      while(chunk.length<bs) chunk.push(0xff);
-      let pkt=[...pack("<IIII",chunk.length,seq,0,0),this.chk(chunk),...chunk];
-      await this.cmd(0x03,pkt);
-      seq++;
-      log(Math.floor((i/data.length)*100)+"%");
+    async _readLoop() {
+      try {
+        while (true) {
+          const { value, done } = await this._reader.read();
+          if (done) break;
+          if (value) this._inputBuffer.push(...Array.from(value));
+        }
+      } catch(e) {}
     }
-    await this.cmd(0x04,pack("<I",1));
+
+    async initStreams() {
+      this._inputBuffer = [];
+      this._reader = this.port.readable.getReader();
+      this._writer = this.port.writable.getWriter();
+      this._readLoop();
+      await this.setSignals(false, false);
+    }
+
+    async sync() {
+      this._inputBuffer.length = 0;
+      await this.sendCommand(ESP_SYNC, SYNC_PACKET);
+      for (let i = 0; i < 8; i++) {
+        try {
+          let [_, data] = await this.getResponse(ESP_SYNC, SYNC_TIMEOUT);
+          if (data.length >= 2 && data[0] === 0 && data[1] === 0) return true;
+        } catch(e) {}
+        await sleep(50);
+      }
+      throw new Error("Sync failed");
+    }
+
+    async readRegister(reg) {
+      let cmd = pack("<I", reg);
+      await this.sendCommand(ESP_READ_REG, cmd);
+      let [val, _] = await this.getResponse(ESP_READ_REG);
+      return val;
+    }
+
+    async sendCommand(opcode, data, checksum = 0) {
+      let header = pack("<BBHI", 0x00, opcode, data.length, checksum);
+      let packet = slipEncode([...header, ...data]);
+      await this._writer.write(new Uint8Array(packet));
+    }
+
+    async readPacket(timeout) {
+      let start = Date.now();
+      while (this._inputBuffer.length === 0) {
+        if (Date.now() - start > timeout) throw new Error("Timeout waiting for packet");
+        await sleep(5);
+      }
+      let b = this._inputBuffer.shift();
+      while (b !== 0xc0) {
+        if (this._inputBuffer.length === 0) {
+          if (Date.now() - start > timeout) throw new Error("Timeout waiting for packet start");
+          await sleep(5);
+          continue;
+        }
+        b = this._inputBuffer.shift();
+      }
+      let packet = [], escape = false;
+      while (true) {
+        if (this._inputBuffer.length === 0) {
+          if (Date.now() - start > timeout) throw new Error("Timeout waiting for packet end");
+          await sleep(5);
+          continue;
+        }
+        b = this._inputBuffer.shift();
+        if (escape) {
+          if (b === 0xdc) packet.push(0xc0);
+          else if (b === 0xdd) packet.push(0xdb);
+          else throw new Error("Invalid SLIP escape");
+          escape = false;
+        } else if (b === 0xdb) {
+          escape = true;
+        } else if (b === 0xc0) {
+          return new Uint8Array(packet);
+        } else {
+          packet.push(b);
+        }
+      }
+    }
+
+    async getResponse(expectedOp, timeout = DEFAULT_TIMEOUT) {
+      let packet = await this.readPacket(timeout);
+      if (packet.length < 8) throw new Error("Response too short");
+      let [resp, op, len, val] = unpack("<BBHI", packet.slice(0, 8));
+      if (resp !== 1) throw new Error(`Invalid response status ${resp}`);
+      if (op !== expectedOp) throw new Error(`Unexpected command response ${toHex(op)} != ${toHex(expectedOp)}`);
+      let data = packet.slice(8, 8 + len);
+      return [val, data];
+    }
+
+    async checkCommand(opcode, data, checksum = 0, timeout = DEFAULT_TIMEOUT) {
+      await this.sendCommand(opcode, data, checksum);
+      let [val, respData] = await this.getResponse(opcode, timeout);
+      let statusLen = (this.chipFamily === CHIP_FAMILY_ESP8266) ? 2 : 4;
+      if (respData.length < statusLen) throw new Error("Short status");
+      let status = respData.slice(-statusLen);
+      if (status[0] === 1) throw new Error(`Command ${toHex(opcode)} failed: error ${toHex(status[1])}`);
+      return [val, respData.slice(0, -statusLen)];
+    }
+
+    checksum(data, state = ESP_CHECKSUM_MAGIC) {
+      for (let b of data) state ^= b;
+      return state;
+    }
+
+    async detectChip() {
+      let magic = await this.readRegister(CHIP_DETECT_MAGIC_REG_ADDR);
+      let chip = CHIP_DETECT_MAGIC_VALUES[magic >>> 0];
+      if (!chip) throw new Error(`Unknown chip magic ${toHex(magic)}`);
+      this.chipFamily = chip.family;
+      this.logger.log(`Detected ${chip.name}`);
+      if (this.chipFamily !== CHIP_FAMILY_ESP8266) {
+        await this.checkCommand(ESP_SPI_ATTACH, new Array(8).fill(0));
+      }
+    }
+
+    async flashBegin(size, offset) {
+      let blockSize = FLASH_WRITE_SIZE;
+      let numBlocks = Math.ceil(size / blockSize);
+      let eraseSize = (this.chipFamily === CHIP_FAMILY_ESP8266) ? size : ((size + FLASH_SECTOR_SIZE - 1) & ~(FLASH_SECTOR_SIZE - 1));
+      let timeout = Math.max(DEFAULT_TIMEOUT, (size / (1024*1024)) * ERASE_REGION_TIMEOUT_PER_MB);
+      let buf = pack("<IIII", eraseSize, numBlocks, blockSize, offset);
+      await this.checkCommand(ESP_FLASH_BEGIN, buf, 0, timeout);
+    }
+
+    async flashBlock(seq, data) {
+      let len = data.length;
+      let header = pack("<IIII", len, seq, 0, 0);
+      let cs = this.checksum(data);
+      let packet = [...header, cs, ...data];
+      await this.checkCommand(ESP_FLASH_DATA, packet);
+    }
+
+    async flashFinish() {
+      await this.checkCommand(ESP_FLASH_END, pack("<I", 1));
+    }
+
+    async writeFlash(addr, firmware, onProgress) {
+      let total = firmware.length;
+      await this.flashBegin(total, addr);
+      let blockSize = FLASH_WRITE_SIZE;
+      let seq = 0;
+      for (let pos = 0; pos < total; pos += blockSize) {
+        let chunk = firmware.slice(pos, Math.min(pos + blockSize, total));
+        if (chunk.length < blockSize) {
+          chunk = chunk.concat(new Array(blockSize - chunk.length).fill(0xff));
+        }
+        await this.flashBlock(seq, chunk);
+        seq++;
+        let written = Math.min(pos + blockSize, total);
+        onProgress({ type: 'progress', bytesWritten: written, totalBytes: total });
+      }
+      await this.flashFinish();
+    }
+
+    async disconnect() {
+      if (this._reader) await this._reader.cancel();
+      if (this._writer) await this._writer.close();
+      await this.port.close();
+    }
   }
-}
 
-let port,esp;
+  let activePort = null, esploader = null, flashingActive = false, selectedFirmwareData = null, selectedFirmwareName = null;
+  const selectPortBtn = document.getElementById('selectPortBtn'), portStatusSpan = document.getElementById('portStatus');
+  const flashBtn = document.getElementById('flashActionBtn'), progressFill = document.getElementById('progressFill');
+  const progressPercentSpan = document.getElementById('progressPercent'), logContainer = document.getElementById('logTerminal');
+  const activeFirmwareDisplay = document.getElementById('activeFirmwareDisplay'), sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebarOverlay'), menuToggle = document.getElementById('menuToggleBtn');
+  const searchInput = document.getElementById('searchFirmware');
 
-document.getElementById("connect").onclick=async()=>{
-  port=await navigator.serial.requestPort();
-  await port.open({baudRate:115200});
-  esp=new ESP(port);
-  await esp.init();
-  log("connected");
-};
+  function closeSidebar() { sidebar.classList.remove('open'); overlay.classList.remove('active'); }
+  function openSidebar() { sidebar.classList.add('open'); overlay.classList.add('active'); }
+  menuToggle.addEventListener('click', (e) => { e.stopPropagation(); if (sidebar.classList.contains('open')) closeSidebar(); else openSidebar(); });
+  overlay.addEventListener('click', closeSidebar);
+  window.addEventListener('resize', () => { if (window.innerWidth > 768) closeSidebar(); });
 
-document.getElementById("flash").onclick=async()=>{
-  let res=await fetch("firmware.bin");
-  let bin=new Uint8Array(await res.arrayBuffer());
-  await esp.flash(0x10000,bin);
-  await esp.resetRun();
-  log("done");
-};
+  function addLog(msg, type='info') {
+    const div = document.createElement('div'); div.className = 'log-line';
+    const prefix = document.createElement('span'); prefix.className = 'log-prefix'; prefix.innerText = '>';
+    const text = document.createElement('span'); text.className = 'log-text';
+    if (type === 'error') text.style.color = '#ff9e9e';
+    if (type === 'success') text.style.fontWeight = '500';
+    text.innerText = msg;
+    div.appendChild(prefix); div.appendChild(text);
+    logContainer.appendChild(div); logContainer.scrollTop = logContainer.scrollHeight;
+    while(logContainer.children.length > 200) logContainer.removeChild(logContainer.firstChild);
+  }
+
+  function updateProgress(percent) { const p = Math.min(100, Math.max(0, percent)); progressFill.style.width = `${p}%`; progressPercentSpan.innerText = `${Math.floor(p)}%`; }
+  function resetProgress() { updateProgress(0); }
+  function updateFlashButtonState() { flashBtn.disabled = (flashingActive || !activePort || !selectedFirmwareData); }
+  function setControlsEnabled(enabled) { selectPortBtn.disabled = !enabled; updateFlashButtonState(); }
+  function updatePortUI() {
+    if (activePort) { const info = activePort.getInfo(); const name = info.usbProductName || info.friendlyName || 'ESP32'; portStatusSpan.innerHTML = `<i class="fas fa-link"></i> Connected: ${name}`; }
+    else { portStatusSpan.innerHTML = `<i class="fas fa-circle-notch"></i> No port selected`; }
+  }
+
+  async function closeSerial() { if (esploader) await esploader.disconnect(); if (activePort) { try { await activePort.close(); } catch(e) {} activePort = null; } }
+
+  async function connectToPort() {
+    if (flashingActive) { addLog("Flashing in progress", "error"); return; }
+    if (!('serial' in navigator)) { addLog("Web Serial API not supported", "error"); return; }
+    try {
+      if (activePort) await closeSerial();
+      const port = await navigator.serial.requestPort();
+      await port.open({ baudRate: 115200 });
+      activePort = port;
+      const logger = { log: (msg) => addLog(msg, 'info') };
+      esploader = new ESPLoader(port, logger);
+      await esploader.initStreams();
+      updatePortUI(); addLog(`Serial port ready @115200 baud`, "success"); updateFlashButtonState();
+    } catch (err) { addLog(`Port error: ${err.message}`, "error"); }
+  }
+
+  async function loadFirmware(name, file) {
+    addLog(`Loading ${name}...`, "info");
+    try {
+      const response = await fetch(file);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const buffer = await response.arrayBuffer();
+      const data = new Uint8Array(buffer);
+      selectedFirmwareData = data; selectedFirmwareName = name;
+      activeFirmwareDisplay.innerHTML = `<i class="fas fa-check-circle"></i> Active firmware: <strong>${name}</strong> (${(data.length/1024).toFixed(2)} KB)`;
+      addLog(`Firmware ready: ${name} (${data.length} bytes)`, "success");
+      document.querySelectorAll('.fw-item').forEach(el => { if (el.getAttribute('data-file') === file) el.classList.add('active'); else el.classList.remove('active'); });
+      updateFlashButtonState();
+    } catch (e) { addLog(`Failed to load ${name}: ${e.message}`, "error"); selectedFirmwareData = null; activeFirmwareDisplay.innerHTML = `<i class="fas fa-exclamation-triangle"></i> Failed to load ${name}`; flashBtn.disabled = true; }
+  }
+
+  async function startFlashing() {
+    if (flashingActive) return;
+    if (!activePort || !esploader) { addLog("No serial port connected", "error"); return; }
+    if (!selectedFirmwareData) { addLog("No firmware selected", "error"); return; }
+    flashingActive = true; setControlsEnabled(false); resetProgress();
+    addLog(`Starting flash: ${selectedFirmwareName} (${(selectedFirmwareData.length/1024).toFixed(2)} KB)`, "info");
+    try {
+      await esploader.preciseBootloaderSequence();
+      addLog("Bootloader entry sequence completed, syncing...", "info");
+      await esploader.sync();
+      addLog("Sync OK", "success");
+      await esploader.detectChip();
+      addLog("Chip detected, SPI attached", "success");
+      const writeCallback = (ev) => {
+        if (ev.type === 'progress') updateProgress((ev.bytesWritten / ev.totalBytes) * 100);
+      };
+      addLog("Writing firmware at offset 0x10000...", "info");
+      await esploader.writeFlash(0x10000, selectedFirmwareData, writeCallback);
+      updateProgress(100);
+      addLog("Firmware written successfully!", "success");
+      addLog("Rebooting...", "info");
+      await esploader.hardReset(false);
+      addLog("Device rebooted. Firmware active.", "success");
+    } catch (err) { addLog(`Flashing error: ${err.message}`, "error"); }
+    finally { flashingActive = false; setControlsEnabled(true); await closeSerial(); updatePortUI(); }
+  }
+
+  function filterFirmwares() {
+    const term = searchInput.value.toLowerCase();
+    document.querySelectorAll('.fw-item').forEach(item => {
+      const name = item.getAttribute('data-fw').toLowerCase();
+      const desc = item.querySelector('.fw-desc')?.innerText.toLowerCase() || '';
+      item.style.display = (name.includes(term) || desc.includes(term)) ? '' : 'none';
+    });
+  }
+
+  document.querySelectorAll('.fw-item').forEach(item => {
+    item.addEventListener('click', async () => {
+      if (flashingActive) { addLog("Cannot change firmware while flashing", "error"); return; }
+      const name = item.getAttribute('data-fw'), file = item.getAttribute('data-file');
+      await loadFirmware(name, file);
+      if (window.innerWidth <= 768) closeSidebar();
+    });
+  });
+  searchInput.addEventListener('input', filterFirmwares);
+  selectPortBtn.addEventListener('click', connectToPort);
+  flashBtn.addEventListener('click', startFlashing);
+  if (!('serial' in navigator)) { addLog("Web Serial API unavailable", "error"); selectPortBtn.disabled = true; }
+  addLog("WebFlasher ready. Select firmware, connect serial port, then click FLASH.", "info");
+})();
 </script>
 </body>
 </html>
