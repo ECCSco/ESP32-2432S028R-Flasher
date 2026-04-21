@@ -500,15 +500,31 @@
       this.chipFamily = null;
       this._reader = null;
       this._writer = null;
-      this.state_DTR = false;
+    }
+    async setSignals(dtr, rts) {
+      await this.port.setSignals({ dataTerminalReady: dtr, requestToSend: rts });
+    }
+    async hardReset(bootloader) {
+      this.logger.log("Hard reset...");
+      if (bootloader) {
+        await this.setSignals(true, true);
+        await sleep(150);
+        await this.setSignals(false, true);
+        await sleep(150);
+        await this.setSignals(false, false);
+        await sleep(200);
+      } else {
+        await this.setSignals(true, false);
+        await sleep(150);
+        await this.setSignals(false, false);
+        await sleep(100);
+      }
     }
     async init() {
-      await this.hardReset(true);
       this._inputBuffer = [];
       this._reader = this.port.readable.getReader();
       this._writer = this.port.writable.getWriter();
       this._readLoop();
-      await this.sync();
       let chipMagicValue = await this.readRegister(CHIP_DETECT_MAGIC_REG_ADDR);
       let chip = CHIP_DETECT_MAGIC_VALUES[chipMagicValue >>> 0];
       if (!chip) throw new Error(`Unknown chip magic: ${toHex(chipMagicValue)}`);
@@ -526,27 +542,6 @@
           if (value) this._inputBuffer.push(...Array.from(value));
         }
       } catch(e) {}
-    }
-    async setRTS(state) { await this.port.setSignals({ requestToSend: state }); await this.setDTR(this.state_DTR); }
-    async setDTR(state) { this.state_DTR = state; await this.port.setSignals({ dataTerminalReady: state }); }
-    async hardReset(bootloader) {
-      this.logger.log("Hard reset...");
-      if (bootloader) {
-        if (this.port.getInfo().usbProductId === USB_JTAG_SERIAL_PID) {
-          await this.setDTR(false); await this.setRTS(false); await sleep(100);
-          await this.setDTR(true); await this.setRTS(false); await sleep(100);
-          await this.setRTS(true); await this.setDTR(false); await sleep(100);
-          await this.setRTS(true); await sleep(100);
-          await this.setDTR(false); await this.setRTS(false);
-        } else {
-          await this.setDTR(false); await this.setRTS(true); await sleep(100);
-          await this.setDTR(true); await this.setRTS(false); await sleep(50);
-          await this.setDTR(false);
-        }
-      } else {
-        await this.setRTS(true); await sleep(100); await this.setRTS(false);
-      }
-      await sleep(1000);
     }
     async readRegister(reg) {
       let packet = pack("<I", reg);
@@ -621,10 +616,7 @@
     async flashBegin(size, offset) {
       let blockSize = FLASH_WRITE_SIZE;
       let numBlocks = Math.ceil(size / blockSize);
-      let eraseSize = size;
-      if (this.chipFamily !== CHIP_FAMILY_ESP8266) {
-        eraseSize = (size + FLASH_SECTOR_SIZE - 1) & ~(FLASH_SECTOR_SIZE - 1);
-      }
+      let eraseSize = (this.chipFamily !== CHIP_FAMILY_ESP8266) ? ((size + FLASH_SECTOR_SIZE - 1) & ~(FLASH_SECTOR_SIZE - 1)) : size;
       let timeout = Math.max(DEFAULT_TIMEOUT, (size / (1024*1024)) * ERASE_REGION_TIMEOUT_PER_MB);
       let buffer = pack("<IIII", eraseSize, numBlocks, blockSize, offset);
       await this.checkCommand(ESP_FLASH_BEGIN, buffer, 0, timeout);
@@ -720,6 +712,8 @@
       activePort = port;
       const logger = { log: (msg) => addLog(msg, 'info') };
       esploader = new ESPLoader(port, logger);
+      await esploader.hardReset(true);
+      await esploader.sync();
       await esploader.init();
       updatePortUI(); addLog(`Connected @115200 baud`, "success"); updateFlashButtonState();
     } catch (err) { addLog(`Port error: ${err.message}`, "error"); }
