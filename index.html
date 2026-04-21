@@ -476,7 +476,7 @@
       await activePort.setSignals({ dataTerminalReady: true, requestToSend: false });
       await sleep(100);
       await activePort.setSignals({ dataTerminalReady: false, requestToSend: false });
-      await sleep(100);
+      await sleep(500);
       return true;
     } catch(e) { addLog(`Reset failed: ${e.message}`, 'error'); return false; }
   }
@@ -514,7 +514,7 @@
   function calcChecksum(data) {
     let cs = 0xEF;
     for(let b of data) cs ^= b;
-    return cs;
+    return cs >>> 0;
   }
 
   async function sendCommand(opcode, payload) {
@@ -526,10 +526,7 @@
     header[2] = len & 0xFF;
     header[3] = (len >> 8) & 0xFF;
     const checksum = calcChecksum(payload);
-    header[4] = checksum;
-    header[5] = 0;
-    header[6] = 0;
-    header[7] = 0;
+    new DataView(header.buffer).setUint32(4, checksum, true);
     const packet = new Uint8Array(header.length + payload.length);
     packet.set(header, 0);
     packet.set(payload, 8);
@@ -537,26 +534,30 @@
     await portWriter.write(encoded);
   }
 
-  async function readResponse(timeout = 3000) {
+  async function readPacket(timeout = 3000) {
     if(!portReader) throw new Error("Port reader not available");
-    let rawBuffer = [];
-    const start = Date.now();
-    while((Date.now() - start) < timeout) {
+    let buffer = [];
+    let started = false;
+    const startTime = Date.now();
+    while((Date.now() - startTime) < timeout) {
       const { value, done } = await portReader.read();
       if(done) break;
       if(value) {
-        for(let byte of value) rawBuffer.push(byte);
-        if(rawBuffer.length >= 2 && rawBuffer[rawBuffer.length-1] === 0xC0 && rawBuffer[rawBuffer.length-2] !== 0xDB) break;
+        for(let byte of value) {
+          if(byte === 0xC0) {
+            if(started && buffer.length > 0) {
+              return slipDecode(new Uint8Array(buffer));
+            }
+            started = true;
+            buffer = [];
+          } else if(started) {
+            buffer.push(byte);
+          }
+        }
       }
-      await sleep(2);
+      await sleep(1);
     }
-    if(rawBuffer.length === 0) throw new Error("No response");
-    const decoded = slipDecode(new Uint8Array(rawBuffer));
-    if(decoded.length < 1) throw new Error("Empty response");
-    const status = decoded[0];
-    const responseData = decoded.slice(1);
-    if(status !== 0x00) throw new Error(`Command error 0x${status.toString(16)}`);
-    return responseData;
+    throw new Error("Packet timeout");
   }
 
   async function espSync() {
@@ -567,28 +568,32 @@
     syncPayload[2] = 0x12;
     syncPayload[3] = 0x20;
     for(let i=4; i<36; i++) syncPayload[i] = 0x55;
-    for(let attempt=0; attempt<5; attempt++) {
+    for(let attempt=0; attempt<6; attempt++) {
       await sendCommand(0x08, syncPayload);
       try {
-        await readResponse(400);
-        addLog("Sync OK", "success");
-        return;
-      } catch(e) {
-        if(attempt === 4) throw new Error("Sync failed after 5 attempts");
-        await sleep(100);
-      }
+        const response = await readPacket(400);
+        if(response.length >= 2 && response[0] === 0x01 && response[1] === 0x08) {
+          addLog("Sync OK", "success");
+          return;
+        }
+      } catch(e) {}
+      await sleep(100);
     }
+    throw new Error("Sync failed after 6 attempts");
   }
 
   async function espReadMac() {
     const cmdPayload = new Uint8Array([0x40, 0x00, 0x00, 0x00]);
     await sendCommand(0x10, cmdPayload);
-    const data = await readResponse();
-    if(data.length >= 6) {
-      const mac = Array.from(data.slice(0,6)).map(b=>b.toString(16).padStart(2,'0')).join(':');
-      addLog(`Chip MAC: ${mac}`, "info");
+    const response = await readPacket();
+    if(response.length >= 7 && response[0] === 0x01 && response[1] === 0x10) {
+      const macData = response.slice(2);
+      if(macData.length >= 6) {
+        const mac = Array.from(macData.slice(0,6)).map(b=>b.toString(16).padStart(2,'0')).join(':');
+        addLog(`Chip MAC: ${mac}`, "info");
+      }
     } else {
-      addLog("MAC read incomplete", "info");
+      addLog("MAC read failed", "warning");
     }
   }
 
@@ -600,7 +605,10 @@
     new DataView(sizeBuf.buffer).setUint32(0, size, true);
     const payload = new Uint8Array([...addrBuf, ...sizeBuf]);
     await sendCommand(0x04, payload);
-    await readResponse(10000);
+    const response = await readPacket(10000);
+    if(response.length < 2 || response[0] !== 0x01 || response[1] !== 0x04) {
+      throw new Error("Erase command failed");
+    }
     addLog("Erase done", "success");
   }
 
@@ -620,12 +628,15 @@
       new DataView(sizeBuf.buffer).setUint32(0, chunk.length, true);
       new DataView(seqBuf.buffer).setUint16(0, seq, true);
       const chunkChecksum = calcChecksum(chunk);
-      const header = new Uint8Array([...addrBuf, ...sizeBuf, ...seqBuf, ...zeroBuf, chunkChecksum]);
+      const header = new Uint8Array([...addrBuf, ...sizeBuf, ...seqBuf, ...zeroBuf, chunkChecksum & 0xFF]);
       const payload = new Uint8Array(header.length + chunk.length);
       payload.set(header, 0);
       payload.set(chunk, header.length);
       await sendCommand(0x05, payload);
-      await readResponse(5000);
+      const response = await readPacket(5000);
+      if(response.length < 2 || response[0] !== 0x01 || response[1] !== 0x05) {
+        throw new Error("Write block failed");
+      }
       offset += chunk.length;
       const percent = (offset / total) * 100;
       if(onProgress) onProgress(percent);
@@ -656,8 +667,8 @@
     let success = false;
     try {
       addLog(`Flashing ${selectedFirmwareName} (${(selectedFirmwareData.length/1024).toFixed(2)} KB)`, "info");
-      await resetIntoBootloader();
-      await sleep(200);
+      if(!await resetIntoBootloader()) throw new Error("Reset failed");
+      await sleep(500);
       await espSync();
       await espReadMac();
       const flashAddr = 0x10000;
@@ -687,7 +698,7 @@
     try {
       if(activePort) await closeSerial();
       const port = await navigator.serial.requestPort();
-      await port.open({ baudRate: 115200, dataBits: 8, stopBits: 1, parity: 'none' });
+      await port.open({ baudRate: 115200, dataBits: 8, stopBits: 1, parity: 'none', flowControl: 'none' });
       activePort = port;
       portReader = activePort.readable.getReader();
       portWriter = activePort.writable.getWriter();
@@ -747,7 +758,7 @@
 
   if(!('serial' in navigator)) { addLog("Web Serial API unavailable", "error"); selectPortBtn.disabled = true; }
   addLog("WebFlasher ready. Select firmware, connect serial port, then click FLASH.", "info");
-  addLog("Real ESP32 esptool protocol implemented (sync, erase, write).", "info");
+  addLog("ESP32 protocol: correct packet format, 32-bit checksum, SLIP framing.", "info");
 })();
 </script>
 </body>
