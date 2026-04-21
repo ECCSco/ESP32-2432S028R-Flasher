@@ -496,9 +496,8 @@
         }
       });
       await esptoolInstance.main();
-      const chip = esptoolInstance.chip;
-      addLog(`Chip: ${chip.getChipName()}`, "success");
-      const mac = chip.getMac();
+      addLog(`Chip: ${esptoolInstance.chipName}`, "success");
+      const mac = await esptoolInstance.readMac();
       if (mac) addLog(`MAC: ${mac.join(':')}`, "info");
       const flashAddress = 0x10000;
       addLog(`Writing firmware to address 0x${flashAddress.toString(16)}...`, "info");
