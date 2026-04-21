@@ -451,35 +451,10 @@
     else if(!selectedFirmwareData || !selectedPort) flashBtn.disabled = true;
   }
 
-  async function safelyClosePort(port) {
-    if (!port) return;
-    try {
-      if (port.readable && port.readable.locked) {
-        const reader = port.readable.getReader();
-        await reader.cancel();
-        reader.releaseLock();
-      }
-      if (port.writable && port.writable.locked) {
-        const writer = port.writable.getWriter();
-        await writer.close();
-        writer.releaseLock();
-      }
-      if (port.writable && port.readable) {
-        await port.close();
-      }
-    } catch (e) {
-      console.warn("port close error", e);
-    }
-  }
-
   async function selectSerialPort() {
     if (flashingInProgress) { addLog("Flashing in progress, cannot change port", "error"); return; }
     if (!('serial' in navigator)) { addLog("Web Serial API not supported. Use Chrome/Edge.", "error"); return; }
     try {
-      if (selectedPort) {
-        await safelyClosePort(selectedPort);
-        selectedPort = null;
-      }
       const port = await navigator.serial.requestPort();
       selectedPort = port;
       const info = port.getInfo();
@@ -510,9 +485,6 @@
     let success = false;
     try {
       addLog(`Flashing ${selectedFirmwareName} (${(selectedFirmwareData.length/1024).toFixed(2)} KB) ...`, "info");
-      await safelyClosePort(selectedPort);
-      await selectedPort.open({ baudRate: 115200, dataBits: 8, stopBits: 1, parity: 'none', flowControl: 'none' });
-      addLog(`Serial port opened @115200 baud`, "success");
       transport = new Transport(selectedPort);
       esptoolInstance = new ESPLoader({
         transport: transport,
@@ -551,7 +523,6 @@
       if (esptoolInstance) {
         try { await esptoolInstance.transport.disconnect(); } catch(e) {}
       }
-      await safelyClosePort(selectedPort);
       setControlsEnabled(true);
       if (success) addLog("Device ready.", "success");
       else addLog("Flashing failed, please retry.", "error");
