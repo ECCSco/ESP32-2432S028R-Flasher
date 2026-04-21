@@ -491,7 +491,9 @@
         transport: transport,
         baudrate: 115200,
         terminal: {
-          writeLine: (msg) => addLog(msg, "info")
+          clean: () => {},
+          writeLine: (msg) => addLog(msg, "info"),
+          write: (msg) => addLog(msg, "info")
         }
       });
       await esptool.initialize();
