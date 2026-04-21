@@ -395,7 +395,6 @@
   import { ESPLoader, Transport } from 'esptool-js';
 
   let activePort = null;
-  let esptool = null;
   let flashingInProgress = false;
   let selectedFirmwareData = null;
   let selectedFirmwareName = null;
@@ -452,26 +451,31 @@
     else if(!selectedFirmwareData) flashBtn.disabled = true;
   }
 
-  async function closeSerial() {
-    if (esptool) {
-      try { await esptool.hardReset(); } catch(e) {}
-      try { await esptool.transport.disconnect(); } catch(e) {}
-      esptool = null;
-    }
-    if (activePort) {
-      try {
-        if (activePort.readable && activePort.readable.locked) {
-          const reader = activePort.readable.getReader();
-          try { await reader.cancel(); } catch(e) {}
+  async function forceClosePort(port) {
+    if (!port) return;
+    try {
+      // Attempt to release locks if any
+      if (port.readable && port.readable.locked) {
+        try {
+          const reader = port.readable.getReader();
+          await reader.cancel();
           reader.releaseLock();
-        }
-        if (activePort.writable && activePort.writable.locked) {
-          const writer = activePort.writable.getWriter();
-          try { await writer.close(); } catch(e) {}
+        } catch(e) {}
+      }
+      if (port.writable && port.writable.locked) {
+        try {
+          const writer = port.writable.getWriter();
+          await writer.close();
           writer.releaseLock();
-        }
-        await activePort.close();
-      } catch(e) {}
+        } catch(e) {}
+      }
+      await port.close();
+    } catch(e) {}
+  }
+
+  async function closeSerial() {
+    if (activePort) {
+      await forceClosePort(activePort);
       activePort = null;
     }
   }
@@ -496,12 +500,14 @@
     setControlsEnabled(false);
     resetProgress();
     let success = false;
+    let localTransport = null;
     let localEsptool = null;
     try {
       addLog(`Flashing ${selectedFirmwareName} (${(selectedFirmwareData.length/1024).toFixed(2)} KB) using esptool-js...`, "info");
-      const transport = new Transport(activePort);
+      // Create a new Transport with the already opened port
+      localTransport = new Transport(activePort);
       localEsptool = new ESPLoader({
-        transport: transport,
+        transport: localTransport,
         baudrate: 115200,
         terminal: {
           clean: () => {},
@@ -547,9 +553,10 @@
     if (flashingInProgress) { addLog("Flashing in progress, wait", "error"); return; }
     if (!('serial' in navigator)) { addLog("Web Serial API not supported. Use Chrome/Edge.", "error"); return; }
     try {
+      // Close existing port properly
       if (activePort) {
         await closeSerial();
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 300));
       }
       const port = await navigator.serial.requestPort();
       await port.open({ baudRate: 115200, dataBits: 8, stopBits: 1, parity: 'none', flowControl: 'none' });
