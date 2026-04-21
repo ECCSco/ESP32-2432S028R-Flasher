@@ -597,52 +597,67 @@
     }
   }
 
-  async function espEraseRegion(addr, size) {
-    addLog(`Erasing flash region 0x${addr.toString(16)} (${size} bytes)...`, "info");
-    const addrBuf = new Uint8Array(4);
-    const sizeBuf = new Uint8Array(4);
-    new DataView(addrBuf.buffer).setUint32(0, addr, true);
-    new DataView(sizeBuf.buffer).setUint32(0, size, true);
-    const payload = new Uint8Array([...addrBuf, ...sizeBuf]);
-    await sendCommand(0x04, payload);
-    const response = await readPacket(10000);
-    if(response.length < 2 || response[0] !== 0x01 || response[1] !== 0x04) {
-      throw new Error("Erase command failed");
+  async function espFlashBegin(size, offset) {
+    const blockSize = 1024;
+    const numBlocks = Math.ceil(size / blockSize);
+    const payload = new Uint8Array(16);
+    const view = new DataView(payload.buffer);
+    view.setUint32(0, size, true);
+    view.setUint32(4, numBlocks, true);
+    view.setUint32(8, blockSize, true);
+    view.setUint32(12, offset, true);
+    await sendCommand(0x02, payload);
+    const response = await readPacket(5000);
+    if(response.length < 2 || response[0] !== 0x01 || response[1] !== 0x02) {
+      throw new Error("Flash begin failed");
     }
-    addLog("Erase done", "success");
+    addLog(`Flash begin: ${size} bytes at 0x${offset.toString(16)}`, "info");
+  }
+
+  async function espWriteFlashBlock(addr, seq, data) {
+    const header = new Uint8Array(16);
+    const view = new DataView(header.buffer);
+    view.setUint32(0, data.length, true);
+    view.setUint32(4, seq, true);
+    view.setUint32(8, 0, true);
+    view.setUint32(12, 0, true);
+    const payload = new Uint8Array(header.length + data.length);
+    payload.set(header, 0);
+    payload.set(data, header.length);
+    await sendCommand(0x03, payload);
+    const response = await readPacket(5000);
+    if(response.length < 2 || response[0] !== 0x01 || response[1] !== 0x03) {
+      throw new Error("Flash data block failed");
+    }
+  }
+
+  async function espFlashEnd() {
+    const payload = new Uint8Array(4);
+    payload[0] = 0x01;
+    await sendCommand(0x04, payload);
+    const response = await readPacket(5000);
+    if(response.length < 2 || response[0] !== 0x01 || response[1] !== 0x04) {
+      throw new Error("Flash end failed");
+    }
+    addLog("Flash end successful", "success");
   }
 
   async function espWriteFlash(addr, firmwareData, onProgress) {
     const total = firmwareData.length;
     let offset = 0;
     const blockSize = 1024;
+    let seq = 0;
     addLog(`Writing ${total} bytes to 0x${addr.toString(16)}...`, "info");
     while(offset < total) {
       const chunk = firmwareData.slice(offset, offset + blockSize);
-      const seq = offset / blockSize;
-      const addrBuf = new Uint8Array(4);
-      const sizeBuf = new Uint8Array(4);
-      const seqBuf = new Uint8Array(2);
-      const zeroBuf = new Uint8Array(2);
-      new DataView(addrBuf.buffer).setUint32(0, addr + offset, true);
-      new DataView(sizeBuf.buffer).setUint32(0, chunk.length, true);
-      new DataView(seqBuf.buffer).setUint16(0, seq, true);
-      const chunkChecksum = calcChecksum(chunk);
-      const header = new Uint8Array([...addrBuf, ...sizeBuf, ...seqBuf, ...zeroBuf, chunkChecksum & 0xFF]);
-      const payload = new Uint8Array(header.length + chunk.length);
-      payload.set(header, 0);
-      payload.set(chunk, header.length);
-      await sendCommand(0x05, payload);
-      const response = await readPacket(5000);
-      if(response.length < 2 || response[0] !== 0x01 || response[1] !== 0x05) {
-        throw new Error("Write block failed");
-      }
+      await espWriteFlashBlock(addr + offset, seq, chunk);
       offset += chunk.length;
+      seq++;
       const percent = (offset / total) * 100;
       if(onProgress) onProgress(percent);
       await sleep(2);
     }
-    addLog("Write completed", "success");
+    addLog("All blocks written", "success");
   }
 
   async function espHardReset() {
@@ -668,15 +683,15 @@
     try {
       addLog(`Flashing ${selectedFirmwareName} (${(selectedFirmwareData.length/1024).toFixed(2)} KB)`, "info");
       if(!await resetIntoBootloader()) throw new Error("Reset failed");
-      await sleep(500);
       await espSync();
       await espReadMac();
       const flashAddr = 0x10000;
-      await espEraseRegion(flashAddr, selectedFirmwareData.length);
+      await espFlashBegin(selectedFirmwareData.length, flashAddr);
       await espWriteFlash(flashAddr, selectedFirmwareData, (p) => {
         updateProgress(p);
         if(Math.floor(p) % 10 === 0 && p < 100 && p > 0) addLog(`Progress ${Math.floor(p)}%`, "info");
       });
+      await espFlashEnd();
       updateProgress(100);
       addLog("Firmware successfully written!", "success");
       await espHardReset();
@@ -758,7 +773,7 @@
 
   if(!('serial' in navigator)) { addLog("Web Serial API unavailable", "error"); selectPortBtn.disabled = true; }
   addLog("WebFlasher ready. Select firmware, connect serial port, then click FLASH.", "info");
-  addLog("ESP32 protocol: correct packet format, 32-bit checksum, SLIP framing.", "info");
+  addLog("ESP32 protocol: FLASH_BEGIN (0x02), FLASH_DATA (0x03), FLASH_END (0x04).", "info");
 })();
 </script>
 </body>
