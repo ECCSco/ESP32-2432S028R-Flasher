@@ -724,7 +724,7 @@
         position += flashWriteSize;
         updateProgress(Math.min(written, uncompressedFilesize), uncompressedFilesize);
       }
-      if (this.IS_STUB) { await this.flashBegin(0, 0); await this.flashFinish(); }
+      await this.flashFinish();
     }
     async flashBlock(data, seq, timeout = DEFAULT_TIMEOUT) {
       await this.checkCommand(ESP_FLASH_DATA, pack("<IIII", data.length, seq, 0, 0).concat(data), this.checksum(data), timeout);
