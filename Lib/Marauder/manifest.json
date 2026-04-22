@@ -1,0 +1,11 @@
+{
+  "name": "NanoDrive",
+  "type": "full",
+  "basePath": "Lib/Marauder/",
+  "files": {
+    "bootloader": "bootloader.bin",
+    "partitions": "partitions.bin",
+    "app": "Marauder.bin",
+    "desc": "desc.txt"
+  }
+}
