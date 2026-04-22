@@ -195,7 +195,6 @@
     .flasher-card {
       background: #0c0c0c;
       padding: 1.5rem;
-      flex: 1;
       margin-bottom: 0.75rem;
       box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
       display: flex;
@@ -223,6 +222,7 @@
       letter-spacing: 0.3px;
       background-color: transparent;
       border-radius: 0px;
+      align-self: flex-start;
     }
     .btn i {
       font-size: 1rem;
@@ -271,7 +271,7 @@
       font-family: 'SF Mono', 'Fira Code', monospace;
       font-size: 0.7rem;
       margin-top: 1.5rem;
-      max-height: 300px;
+      height: 320px;
       overflow-y: auto;
       flex-shrink: 0;
     }
@@ -320,9 +320,13 @@
       }
       .btn {
         justify-content: center;
+        align-self: stretch;
       }
       .flasher-card {
         padding: 1.2rem;
+      }
+      .log-terminal {
+        height: 280px;
       }
     }
     ::-webkit-scrollbar {
