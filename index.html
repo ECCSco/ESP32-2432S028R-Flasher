@@ -211,6 +211,7 @@
       flex-direction: column;
       min-width: 0;
       overflow-y: auto;
+      position: relative;
     }
     .mobile-menu-btn {
       display: none;
@@ -256,7 +257,7 @@
       flex-direction: column;
       flex: 1;
       min-height: 0;
-      margin-bottom: 0.75rem;
+      margin-bottom: 0;
     }
     h3 {
       font-size: 1.2rem;
@@ -369,6 +370,7 @@
       }
       .main-content {
         padding: 1rem;
+        padding-bottom: env(safe-area-inset-bottom, 1rem);
       }
       .header {
         margin-top: 0.5rem;
@@ -386,6 +388,10 @@
       }
       .flasher-card {
         padding: 1.2rem;
+        margin-bottom: 0;
+      }
+      .log-terminal {
+        margin-top: 1rem;
       }
     }
     ::-webkit-scrollbar {
@@ -686,7 +692,7 @@
     fwDiv.setAttribute('data-custom', 'true');
     fwDiv.innerHTML = `
       <div class="fw-name">
-        <span class="fw-name-text">${name}</span>
+        <span class="fw-name-text">${escapeHtml(name)}</span>
         <i class="fas fa-file-upload"></i>
       </div>
       <div class="fw-desc">Custom firmware uploaded by user</div>
@@ -698,6 +704,15 @@
     });
     firmwareListContainer.prepend(fwDiv);
     fwDiv.click();
+  }
+
+  function escapeHtml(str) {
+    return str.replace(/[&<>]/g, function(m) {
+      if (m === '&') return '&amp;';
+      if (m === '<') return '&lt;';
+      if (m === '>') return '&gt;';
+      return m;
+    });
   }
 
   function handleCustomFirmware(file) {
