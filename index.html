@@ -563,6 +563,7 @@
     let success = false;
     try {
       addLog(`Flashing ${selectedFirmwareName} (${(selectedFirmwareData.length/1024).toFixed(2)} KB) ...`, "info");
+      addLog("Hard formatting: full flash erase initiated before write", "info");
       transport = new Transport(selectedPort);
       esptoolInstance = new ESPLoader({
         transport: transport,
@@ -576,7 +577,7 @@
       await esptoolInstance.main();
       addLog("Connected to ESP device", "success");
       const flashAddress = 0x10000;
-      addLog(`Writing firmware to address 0x${flashAddress.toString(16)}...`, "info");
+      addLog(`Writing firmware to address 0x${flashAddress.toString(16)} with full flash erase...`, "info");
       const binaryData = uint8ToBinaryString(selectedFirmwareData);
       await esptoolInstance.writeFlash({
         fileArray: [
@@ -586,7 +587,7 @@
           }
         ],
         flashSize: "keep",
-        eraseAll: false,
+        eraseAll: true,
         compress: true,
         reportProgress: (sent, total) => {
           const percent = (sent / total) * 100;
@@ -595,7 +596,7 @@
           }
         }
       });
-      addLog("Firmware successfully written!", "success");
+      addLog("Firmware successfully written after full flash erase!", "success");
       try {
         await esptoolInstance.after();
         addLog("Device rebooted", "success");
@@ -752,7 +753,7 @@
   if (!('serial' in navigator)) { addLog("Web Serial API unavailable", "error"); selectPortBtn.disabled = true; }
   
   await loadDescriptionOnly();
-  addLog("WebFlasher ready. Select firmware, select serial port, then click FLASH.", "info");
+  addLog("WebFlasher ready. Select firmware, select serial port, then click FLASH. Full flash erase is enabled.", "info");
 </script>
 </body>
 </html>
