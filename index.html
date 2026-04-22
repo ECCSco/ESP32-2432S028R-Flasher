@@ -172,7 +172,8 @@
     .flasher-card {
       background: #0c0c0c;
       padding: 1.5rem;
-      margin-bottom: 2rem;
+      flex: 1;
+      margin-bottom: 0.75rem;
       box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
     }
     h3 {
@@ -237,27 +238,6 @@
       margin-bottom: 1.5rem;
       border-left: 3px solid #ffffff;
       font-size: 0.75rem;
-    }
-    .progress-section {
-      margin: 1.5rem 0 1.2rem;
-    }
-    .progress-bar-container {
-      background: #1c1c1c;
-      height: 6px;
-      width: 100%;
-      margin: 0.5rem 0 0.3rem;
-    }
-    .progress-fill {
-      width: 0%;
-      height: 100%;
-      background-color: #ffffff;
-      transition: width 0.25s ease-out;
-    }
-    .progress-percent {
-      text-align: right;
-      font-size: 0.7rem;
-      font-weight: 500;
-      color: #bbbbbb;
     }
     .log-terminal {
       background: #030303;
@@ -368,13 +348,6 @@
 
       <button id="flashActionBtn" class="btn" disabled><i class="fas fa-bolt"></i> FLASH FIRMWARE</button>
 
-      <div class="progress-section">
-        <div class="progress-bar-container">
-          <div class="progress-fill" id="progressFill"></div>
-        </div>
-        <div class="progress-percent" id="progressPercent">0%</div>
-      </div>
-
       <div class="log-terminal" id="logTerminal">
         <div class="log-line"><span class="log-prefix">></span><span class="log-text">System ready — waiting for serial connection</span></div>
         <div class="log-line"><span class="log-prefix">></span><span class="log-text">ESP32-2432S028R WebFlasher (esptool-js engine)</span></div>
@@ -404,8 +377,6 @@
   const selectPortBtn = document.getElementById('selectPortBtn');
   const portStatusSpan = document.getElementById('portStatus');
   const flashBtn = document.getElementById('flashActionBtn');
-  const progressFill = document.getElementById('progressFill');
-  const progressPercentSpan = document.getElementById('progressPercent');
   const logContainer = document.getElementById('logTerminal');
   const activeFirmwareDisplay = document.getElementById('activeFirmwareDisplay');
   const sidebar = document.getElementById('sidebar');
@@ -437,14 +408,6 @@
     logContainer.scrollTop = logContainer.scrollHeight;
     while(logContainer.children.length > 200) logContainer.removeChild(logContainer.firstChild);
   }
-
-  function updateProgress(percent) {
-    const p = Math.min(100, Math.max(0, percent));
-    progressFill.style.width = `${p}%`;
-    progressPercentSpan.innerText = `${Math.floor(p)}%`;
-  }
-
-  function resetProgress() { updateProgress(0); }
 
   function setControlsEnabled(enabled) {
     selectPortBtn.disabled = !enabled;
@@ -491,7 +454,6 @@
     if (!selectedFirmwareData) { addLog("No firmware selected", "error"); return; }
     flashingInProgress = true;
     setControlsEnabled(false);
-    resetProgress();
     let transport = null;
     let esptoolInstance = null;
     let success = false;
@@ -524,13 +486,11 @@
         compress: true,
         reportProgress: (sent, total) => {
           const percent = (sent / total) * 100;
-          updateProgress(percent);
           if (Math.floor(percent) % 10 === 0 && percent < 100 && percent > 0) {
             addLog(`Progress ${Math.floor(percent)}%`, "info");
           }
         }
       });
-      updateProgress(100);
       addLog("Firmware successfully written!", "success");
       try {
         await esptoolInstance.after();
@@ -603,8 +563,7 @@
   flashBtn.addEventListener('click', startFlashing);
 
   if (!('serial' in navigator)) { addLog("Web Serial API unavailable", "error"); selectPortBtn.disabled = true; }
-  addLog("WebFlasher ready (esptool-js engine). Select firmware, select serial port, then click FLASH.", "info");
-  addLog("Uses official Espressif stub loader — stable and fast.", "info");
+  addLog("WebFlasher ready. Select firmware, select serial port, then click FLASH.", "info");
 </script>
 </body>
 </html>
