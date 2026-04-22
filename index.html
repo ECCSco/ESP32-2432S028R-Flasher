@@ -681,7 +681,7 @@
       transport = new Transport(selectedPort);
       esptoolInstance = new ESPLoader({
         transport: transport,
-        baudrate: 115200,
+        baudrate: 921600,
         terminal: {
           clean: () => {},
           writeLine: (msg) => addLog(String(msg !== undefined ? msg : ""), "info"),
