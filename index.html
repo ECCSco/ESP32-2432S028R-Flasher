@@ -630,7 +630,7 @@
       
       await esptoolInstance.main();
       addLog("Connected to ESP device", "success");
-            await esptoolInstance.eraseFlash();      
+      await esptoolInstance.eraseFlash();      
       const fileArray = [];
       
       if (currentBootloaderData && currentBootloaderData.length > 0) {
@@ -676,8 +676,7 @@
         try { await esptoolInstance.transport.disconnect(); } catch(e) {}
       }
       setControlsEnabled(true);
-      if (success)
-      else addLog("Flashing failed, please retry. Consider manual power cycle.", "error");
+      if (!success) addLog("Flashing failed, please retry. Consider manual power cycle.", "error");
     }
   }
 
@@ -818,6 +817,14 @@
         if (window.innerWidth <= 768) closeSidebar();
       });
     });
+    
+    const firstManifestItem = document.querySelector('.fw-item[data-manifest]');
+    if (firstManifestItem) {
+      const firstManifestPath = firstManifestItem.getAttribute('data-manifest');
+      if (firstManifestPath && firmwareCache.has(firstManifestPath)) {
+        await selectFirmwareFromCache(firstManifestPath);
+      }
+    }
   }
 
   async function preloadResources() {
@@ -838,7 +845,11 @@
   if (!('serial' in navigator)) { addLog("Web Serial API unavailable", "error"); selectPortBtn.disabled = true; }
 
   async function boot() {
-    await preloadResources();
+    try {
+      await preloadResources();
+    } catch (err) {
+      addLog(`Initialization error: ${err.message}`, "error");
+    }
     if (splash) splash.style.display = 'none';
     if (appWrapper) appWrapper.style.display = 'flex';
     addLog("WebFlasher ready. Select firmware from library, then choose port and flash.", "info");
