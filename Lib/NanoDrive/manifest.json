@@ -1,0 +1,9 @@
+{
+  "name": "NanoDrive",
+  "type": "full",
+  "files": {
+    "bootloader": "bootloader.bin",
+    "partitions": "partitions.bin",
+    "app": "NanoDrive.bin"
+  }
+}
