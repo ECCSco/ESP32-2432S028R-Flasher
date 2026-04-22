@@ -410,6 +410,7 @@
   let currentBootloaderData = null;
   let currentPartitionsData = null;
   let currentAppData = null;
+  let currentBoothelpData = null;
   let currentFirmwareName = null;
 
   const firmwareCache = new Map();
@@ -492,7 +493,7 @@
       const basePath = manifest.basePath || manifestPath.replace("manifest.json", "");
       
       let description = "";
-      const descFile = manifest.descriptionFile || "desc.txt";
+      const descFile = manifest.files?.desc || "desc.txt";
       try {
         const descResp = await fetch(basePath + descFile);
         if (descResp.ok) description = await descResp.text();
@@ -504,16 +505,26 @@
       let bootloaderData = null;
       let partitionsData = null;
       let appData = null;
+      let boothelpData = null;
       
       if (manifest.type === "full") {
-        const [boot, part, app] = await Promise.all([
-          fetch(basePath + manifest.files.bootloader).then(r => { if(!r.ok) throw new Error(`bootloader missing`); return r.arrayBuffer(); }),
-          fetch(basePath + manifest.files.partitions).then(r => { if(!r.ok) throw new Error(`partitions missing`); return r.arrayBuffer(); }),
-          fetch(basePath + manifest.files.app).then(r => { if(!r.ok) throw new Error(`app missing`); return r.arrayBuffer(); })
-        ]);
-        bootloaderData = new Uint8Array(boot);
-        partitionsData = new Uint8Array(part);
-        appData = new Uint8Array(app);
+        const filesToFetch = [];
+        const fileMap = {};
+        
+        filesToFetch.push(fetch(basePath + manifest.files.bootloader).then(r => { if(!r.ok) throw new Error(`bootloader missing`); return r.arrayBuffer(); }).then(buf => { fileMap.bootloader = new Uint8Array(buf); }));
+        filesToFetch.push(fetch(basePath + manifest.files.partitions).then(r => { if(!r.ok) throw new Error(`partitions missing`); return r.arrayBuffer(); }).then(buf => { fileMap.partitions = new Uint8Array(buf); }));
+        filesToFetch.push(fetch(basePath + manifest.files.app).then(r => { if(!r.ok) throw new Error(`app missing`); return r.arrayBuffer(); }).then(buf => { fileMap.app = new Uint8Array(buf); }));
+        
+        if (manifest.files.boothelp && manifest.files.boothelp !== false && typeof manifest.files.boothelp === 'string') {
+          filesToFetch.push(fetch(basePath + manifest.files.boothelp).then(r => { if(!r.ok) throw new Error(`boothelp missing`); return r.arrayBuffer(); }).then(buf => { fileMap.boothelp = new Uint8Array(buf); }));
+        }
+        
+        await Promise.all(filesToFetch);
+        
+        bootloaderData = fileMap.bootloader || null;
+        partitionsData = fileMap.partitions || null;
+        appData = fileMap.app || null;
+        boothelpData = fileMap.boothelp || null;
       } else if (manifest.type === "single") {
         const app = await fetch(basePath + manifest.file).then(r => { if(!r.ok) throw new Error(`firmware missing`); return r.arrayBuffer(); });
         appData = new Uint8Array(app);
@@ -526,6 +537,7 @@
         bootloaderData,
         partitionsData,
         appData,
+        boothelpData,
         description: description.trim()
       };
       firmwareCache.set(manifestPath, cacheEntry);
@@ -561,10 +573,11 @@
     currentBootloaderData = cached.bootloaderData;
     currentPartitionsData = cached.partitionsData;
     currentAppData = cached.appData;
+    currentBoothelpData = cached.boothelpData;
     currentFirmwareName = cached.manifest.name;
     currentFirmwareCacheKey = manifestPath;
     
-    const size = currentAppData.length;
+    const size = (currentAppData ? currentAppData.length : 0) + (currentBoothelpData ? currentBoothelpData.length : 0);
     activeFirmwareDisplay.innerHTML = `<i class="fas fa-check-circle"></i> ${currentFirmwareName} (${(size/1024).toFixed(2)} KB)`;
     addLog(`Selected: ${currentFirmwareName}`, "success");
     
@@ -576,7 +589,7 @@
       }
     });
     
-    if (!flashingInProgress && selectedPort) flashBtn.disabled = false;
+    if (!flashingInProgress && selectedPort && currentAppData) flashBtn.disabled = false;
     else flashBtn.disabled = true;
     
     return true;
@@ -651,6 +664,13 @@
         });
       }
       
+      if (currentBoothelpData && currentBoothelpData.length > 0) {
+        fileArray.push({
+          data: uint8ToBinaryString(currentBoothelpData),
+          address: 0xE000
+        });
+      }
+      
       fileArray.push({
         data: uint8ToBinaryString(currentAppData),
         address: 0x10000
@@ -706,6 +726,7 @@
       currentBootloaderData = null;
       currentPartitionsData = null;
       currentAppData = binaryData;
+      currentBoothelpData = null;
       currentFirmwareName = name;
       currentFirmwareCacheKey = null;
       activeFirmwareDisplay.innerHTML = `<i class="fas fa-check-circle"></i> ${name} (${(binaryData.length/1024).toFixed(2)} KB) [custom]`;
