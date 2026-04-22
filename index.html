@@ -432,6 +432,9 @@
   let currentPartitionsData = null;
   let currentAppData = null;
   let currentFirmwareName = null;
+  let currentFlashMode = 'keep';
+  let currentFlashFreq = 'keep';
+  let currentFlashSize = 'keep';
 
   const firmwareCache = new Map();
 
@@ -540,12 +543,20 @@
         throw new Error(`Unknown manifest type: ${manifest.type}`);
       }
       
+      let flashParams = { mode: 'keep', freq: 'keep', size: 'keep' };
+      if (manifest.flash) {
+        flashParams.mode = manifest.flash.mode || 'keep';
+        flashParams.freq = manifest.flash.freq || 'keep';
+        flashParams.size = manifest.flash.size || 'keep';
+      }
+      
       const cacheEntry = {
         manifest,
         bootloaderData,
         partitionsData,
         appData,
-        description: description.trim()
+        description: description.trim(),
+        flashParams
       };
       firmwareCache.set(manifestPath, cacheEntry);
       
@@ -582,10 +593,17 @@
     currentAppData = cached.appData;
     currentFirmwareName = cached.manifest.name;
     currentFirmwareCacheKey = manifestPath;
+    currentFlashMode = cached.flashParams.mode;
+    currentFlashFreq = cached.flashParams.freq;
+    currentFlashSize = cached.flashParams.size;
     
     const size = currentAppData.length;
-    activeFirmwareDisplay.innerHTML = `<i class="fas fa-check-circle"></i> ${currentFirmwareName} (${(size/1024).toFixed(2)} KB)`;
-    addLog(`Selected: ${currentFirmwareName}`, "success");
+    let flashInfo = '';
+    if (currentFlashMode !== 'keep' || currentFlashFreq !== 'keep' || currentFlashSize !== 'keep') {
+      flashInfo = ` | flash: ${currentFlashMode}/${currentFlashFreq}/${currentFlashSize}`;
+    }
+    activeFirmwareDisplay.innerHTML = `<i class="fas fa-check-circle"></i> ${currentFirmwareName} (${(size/1024).toFixed(2)} KB)${flashInfo}`;
+    addLog(`Selected: ${currentFirmwareName} ${flashInfo}`, "success");
     
     document.querySelectorAll('.fw-item').forEach(el => {
       if (el.getAttribute('data-manifest') === manifestPath) {
@@ -675,9 +693,13 @@
         address: 0x10000
       });
       
+      addLog(`Flashing with settings: mode=${currentFlashMode}, freq=${currentFlashFreq}, size=${currentFlashSize}`, "info");
+      
       await esptoolInstance.writeFlash({
         fileArray: fileArray,
-        flashSize: "keep",
+        flashSize: currentFlashSize,
+        flashMode: currentFlashMode,
+        flashFreq: currentFlashFreq,
         compress: true,
         eraseAll: false
       });
@@ -727,6 +749,9 @@
       currentAppData = binaryData;
       currentFirmwareName = name;
       currentFirmwareCacheKey = null;
+      currentFlashMode = 'keep';
+      currentFlashFreq = 'keep';
+      currentFlashSize = 'keep';
       activeFirmwareDisplay.innerHTML = `<i class="fas fa-check-circle"></i> ${name} (${(binaryData.length/1024).toFixed(2)} KB) [custom]`;
       addLog(`Custom firmware selected: ${name}`, "success");
       document.querySelectorAll('.fw-item').forEach(el => {
