@@ -3,6 +3,7 @@
   "type": "full",
   "basePath": "Lib/Marauder/",
   "files": {
+    "boothelp": "boot_app0.bin",
     "bootloader": "bootloader.bin",
     "partitions": "partitions.bin",
     "app": "Marauder.bin",
