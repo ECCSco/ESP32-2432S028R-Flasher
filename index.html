@@ -62,8 +62,14 @@
       align-items: center;
       gap: 8px;
     }
-    .search-box {
+    .search-wrapper {
+      display: flex;
+      gap: 0.5rem;
       margin-bottom: 1.5rem;
+      align-items: center;
+    }
+    .search-box {
+      flex: 1;
       position: relative;
     }
     .search-box i {
@@ -87,11 +93,28 @@
     .search-box input:focus {
       border-color: #ffffff;
     }
+    .btn-plus {
+      background: #0b0b0b;
+      border: 1px solid #262626;
+      width: 38px;
+      height: 38px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: white;
+      font-size: 1rem;
+      transition: all 0.2s ease;
+    }
+    .btn-plus:hover {
+      border-color: #ffffff;
+      background: #151515;
+    }
     .firmware-list {
       display: flex;
       flex-direction: column;
       gap: 1.2rem;
-      max-height: calc(100vh - 180px);
+      max-height: calc(100vh - 220px);
       overflow-y: auto;
     }
     .fw-item {
@@ -175,6 +198,8 @@
       flex: 1;
       margin-bottom: 0.75rem;
       box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
+      display: flex;
+      flex-direction: column;
     }
     h3 {
       font-size: 1.2rem;
@@ -246,8 +271,9 @@
       font-family: 'SF Mono', 'Fira Code', monospace;
       font-size: 0.7rem;
       margin-top: 1.5rem;
-      max-height: 200px;
+      max-height: 300px;
       overflow-y: auto;
+      flex-shrink: 0;
     }
     .log-line {
       padding: 0.2rem 0;
@@ -315,12 +341,15 @@
 <div class="app-wrapper">
   <div class="sidebar" id="sidebar">
     <h2><i class="fas fa-microchip"></i> Firmware library</h2>
-    <div class="search-box">
-      <i class="fas fa-search"></i>
-      <input type="text" id="searchFirmware" placeholder="Search firmware...">
+    <div class="search-wrapper">
+      <div class="search-box">
+        <i class="fas fa-search"></i>
+        <input type="text" id="searchFirmware" placeholder="Search firmware...">
+      </div>
+      <button id="addCustomFirmwareBtn" class="btn-plus"><i class="fas fa-plus"></i></button>
     </div>
     <div class="firmware-list" id="firmwareListContainer">
-      <div class="fw-item" data-fw="NanoDrive" data-file="NanoDrive.bin">
+      <div class="fw-item" data-fw="NanoDrive" data-file="NanoDrive.bin" data-custom="false">
         <div class="fw-name">NanoDrive <i class="fas fa-calculator"></i></div>
         <div class="fw-desc">Extensive calculator firmware: high‑precision math, scripting engine, real‑time data logging.</div>
       </div>
@@ -356,6 +385,8 @@
   </div>
 </div>
 
+<input type="file" id="customFirmwareInput" accept=".bin" style="display: none;">
+
 <script type="importmap">
   {
     "imports": {
@@ -383,6 +414,9 @@
   const overlay = document.getElementById('sidebarOverlay');
   const menuToggle = document.getElementById('menuToggleBtn');
   const searchInput = document.getElementById('searchFirmware');
+  const addCustomBtn = document.getElementById('addCustomFirmwareBtn');
+  const customFileInput = document.getElementById('customFirmwareInput');
+  const firmwareListContainer = document.getElementById('firmwareListContainer');
 
   function closeSidebar() { sidebar.classList.remove('open'); overlay.classList.remove('active'); }
   function openSidebar() { sidebar.classList.add('open'); overlay.classList.add('active'); }
@@ -513,31 +547,97 @@
     }
   }
 
-  async function loadFirmware(name, file) {
+  async function loadFirmware(name, file, binaryData = null) {
     addLog(`Loading ${name}...`, "info");
     try {
-      const resp = await fetch(file);
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const buf = await resp.arrayBuffer();
-      const data = new Uint8Array(buf);
+      let data;
+      if (binaryData) {
+        data = binaryData;
+      } else {
+        const resp = await fetch(file);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const buf = await resp.arrayBuffer();
+        data = new Uint8Array(buf);
+      }
       selectedFirmwareData = data;
       selectedFirmwareName = name;
       selectedFirmwareFile = file;
       activeFirmwareDisplay.innerHTML = `<i class="fas fa-check-circle"></i> Active firmware: <strong>${name}</strong> (${(data.length/1024).toFixed(2)} KB)`;
       addLog(`Firmware ready: ${name} (${data.length} bytes)`, "success");
       document.querySelectorAll('.fw-item').forEach(el => {
-        if (el.getAttribute('data-file') === file) el.classList.add('active');
-        else el.classList.remove('active');
+        if ((el.getAttribute('data-file') === file && !binaryData) || (binaryData && el.getAttribute('data-custom') === 'true' && el.getAttribute('data-fw') === name)) {
+          el.classList.add('active');
+        } else {
+          el.classList.remove('active');
+        }
       });
       if (!flashingInProgress && selectedPort) flashBtn.disabled = false;
       else if (!flashingInProgress) flashBtn.disabled = true;
     } catch(e) {
       addLog(`Failed to load ${name}: ${e.message}`, "error");
-      selectedFirmwareData = null;
-      activeFirmwareDisplay.innerHTML = `<i class="fas fa-exclamation-triangle"></i> Failed to load ${name}`;
-      flashBtn.disabled = true;
+      if (!binaryData) {
+        selectedFirmwareData = null;
+        activeFirmwareDisplay.innerHTML = `<i class="fas fa-exclamation-triangle"></i> Failed to load ${name}`;
+        flashBtn.disabled = true;
+      }
     }
   }
+
+  function addCustomFirmwareToList(name, binaryData, fileObj) {
+    const existing = Array.from(firmwareListContainer.querySelectorAll('.fw-item')).find(item => item.getAttribute('data-fw') === name);
+    if (existing) {
+      existing.click();
+      return;
+    }
+    const fwDiv = document.createElement('div');
+    fwDiv.className = 'fw-item';
+    fwDiv.setAttribute('data-fw', name);
+    fwDiv.setAttribute('data-file', 'custom');
+    fwDiv.setAttribute('data-custom', 'true');
+    fwDiv.innerHTML = `
+      <div class="fw-name">${name} <i class="fas fa-file-upload"></i></div>
+      <div class="fw-desc">Custom firmware uploaded by user</div>
+    `;
+    fwDiv.addEventListener('click', async () => {
+      if (flashingInProgress) { addLog("Cannot change firmware while flashing", "error"); return; }
+      await loadFirmware(name, 'custom', binaryData);
+      if (window.innerWidth <= 768) closeSidebar();
+    });
+    firmwareListContainer.prepend(fwDiv);
+    fwDiv.click();
+  }
+
+  function handleCustomFirmware(file) {
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const arrayBuffer = e.target.result;
+      const uint8Array = new Uint8Array(arrayBuffer);
+      const fileName = file.name.replace(/\.bin$/i, '');
+      const displayName = `${fileName} (custom)`;
+      await addCustomFirmwareToList(displayName, uint8Array, file);
+      addLog(`Custom firmware loaded: ${file.name}`, "success");
+    };
+    reader.onerror = () => {
+      addLog("Failed to read custom firmware file", "error");
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  addCustomBtn.addEventListener('click', () => {
+    if (flashingInProgress) {
+      addLog("Cannot load custom firmware while flashing", "error");
+      return;
+    }
+    customFileInput.click();
+  });
+
+  customFileInput.addEventListener('change', (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      handleCustomFirmware(file);
+    }
+    customFileInput.value = '';
+  });
 
   function filterFirmwares() {
     const term = searchInput.value.toLowerCase();
@@ -553,6 +653,9 @@
       if (flashingInProgress) { addLog("Cannot change firmware while flashing", "error"); return; }
       const name = item.getAttribute('data-fw');
       const file = item.getAttribute('data-file');
+      if (item.getAttribute('data-custom') === 'true') {
+        return;
+      }
       await loadFirmware(name, file);
       if (window.innerWidth <= 768) closeSidebar();
     });
