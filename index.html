@@ -207,6 +207,7 @@
     .main-content {
       flex: 1;
       padding: 1.5rem;
+      padding-bottom: 1.5rem;
       display: flex;
       flex-direction: column;
       min-width: 0;
@@ -370,7 +371,7 @@
       }
       .main-content {
         padding: 1rem;
-        padding-bottom: env(safe-area-inset-bottom, 1rem);
+        padding-bottom: max(1rem, env(safe-area-inset-bottom, 1rem));
       }
       .header {
         margin-top: 0.5rem;
@@ -658,7 +659,7 @@
       selectedFirmwareData = data;
       selectedFirmwareName = name;
       selectedFirmwareFile = file;
-      activeFirmwareDisplay.innerHTML = `<i class="fas fa-check-circle"></i> Active firmware: <strong>${name}</strong> (${(data.length/1024).toFixed(2)} KB)`;
+      activeFirmwareDisplay.innerHTML = `<i class="fas fa-check-circle"></i> Active firmware: <strong>${escapeHtml(name)}</strong> (${(data.length/1024).toFixed(2)} KB)`;
       addLog(`Firmware ready: ${name} (${data.length} bytes)`, "success");
       document.querySelectorAll('.fw-item').forEach(el => {
         if ((el.getAttribute('data-file') === file && !binaryData) || (binaryData && el.getAttribute('data-custom') === 'true' && el.getAttribute('data-fw') === name)) {
