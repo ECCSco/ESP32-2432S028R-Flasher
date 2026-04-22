@@ -171,48 +171,29 @@
       border-color: #ffffff #262626 #262626 #ffffff;
     }
     .fw-name {
-      display: flex;
-      align-items: flex-start;
-      gap: 8px;
-      margin-bottom: 0.4rem;
-    }
-    .fw-name-text {
-      flex: 1;
       font-weight: 600;
       font-size: 1rem;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      word-break: break-word;
+      margin-bottom: 0.4rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
     .fw-name i {
       font-size: 0.8rem;
       color: #ffffff;
-      flex-shrink: 0;
-      margin-top: 2px;
     }
     .fw-desc {
       font-size: 0.7rem;
       color: #aaaaaa;
       line-height: 1.3;
-      display: -webkit-box;
-      -webkit-line-clamp: 3;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      word-break: break-word;
     }
     .main-content {
       flex: 1;
       padding: 1.5rem;
-      padding-bottom: 1.5rem;
       display: flex;
       flex-direction: column;
       min-width: 0;
       overflow-y: auto;
-      position: relative;
     }
     .mobile-menu-btn {
       display: none;
@@ -258,7 +239,7 @@
       flex-direction: column;
       flex: 1;
       min-height: 0;
-      margin-bottom: 0;
+      margin-bottom: 0.75rem;
     }
     h3 {
       font-size: 1.2rem;
@@ -371,7 +352,6 @@
       }
       .main-content {
         padding: 1rem;
-        padding-bottom: max(1rem, env(safe-area-inset-bottom, 1rem));
       }
       .header {
         margin-top: 0.5rem;
@@ -389,10 +369,6 @@
       }
       .flasher-card {
         padding: 1.2rem;
-        margin-bottom: 0;
-      }
-      .log-terminal {
-        margin-top: 1rem;
       }
     }
     ::-webkit-scrollbar {
@@ -426,10 +402,7 @@
     </div>
     <div class="firmware-list" id="firmwareListContainer">
       <div class="fw-item" data-fw="NanoDrive" data-file="Lib/NanoDrive/NanoDrive.bin" data-custom="false">
-        <div class="fw-name">
-          <span class="fw-name-text">NanoDrive</span>
-          <i class="fas fa-microchip"></i>
-        </div>
+        <div class="fw-name">NanoDrive <i class="fas fa-microchip"></i></div>
         <div class="fw-desc" id="defaultFwDesc">Loading description...</div>
       </div>
     </div>
@@ -613,7 +586,7 @@
           }
         ],
         flashSize: "keep",
-        eraseAll: true,
+        eraseAll: false,
         compress: true,
         reportProgress: (sent, total) => {
           const percent = (sent / total) * 100;
@@ -659,7 +632,7 @@
       selectedFirmwareData = data;
       selectedFirmwareName = name;
       selectedFirmwareFile = file;
-      activeFirmwareDisplay.innerHTML = `<i class="fas fa-check-circle"></i> Active firmware: <strong>${escapeHtml(name)}</strong> (${(data.length/1024).toFixed(2)} KB)`;
+      activeFirmwareDisplay.innerHTML = `<i class="fas fa-check-circle"></i> Active firmware: <strong>${name}</strong> (${(data.length/1024).toFixed(2)} KB)`;
       addLog(`Firmware ready: ${name} (${data.length} bytes)`, "success");
       document.querySelectorAll('.fw-item').forEach(el => {
         if ((el.getAttribute('data-file') === file && !binaryData) || (binaryData && el.getAttribute('data-custom') === 'true' && el.getAttribute('data-fw') === name)) {
@@ -692,10 +665,7 @@
     fwDiv.setAttribute('data-file', 'custom');
     fwDiv.setAttribute('data-custom', 'true');
     fwDiv.innerHTML = `
-      <div class="fw-name">
-        <span class="fw-name-text">${escapeHtml(name)}</span>
-        <i class="fas fa-file-upload"></i>
-      </div>
+      <div class="fw-name">${name} <i class="fas fa-file-upload"></i></div>
       <div class="fw-desc">Custom firmware uploaded by user</div>
     `;
     fwDiv.addEventListener('click', async () => {
@@ -705,15 +675,6 @@
     });
     firmwareListContainer.prepend(fwDiv);
     fwDiv.click();
-  }
-
-  function escapeHtml(str) {
-    return str.replace(/[&<>]/g, function(m) {
-      if (m === '&') return '&amp;';
-      if (m === '<') return '&lt;';
-      if (m === '>') return '&gt;';
-      return m;
-    });
   }
 
   function handleCustomFirmware(file) {
