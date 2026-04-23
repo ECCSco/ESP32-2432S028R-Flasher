@@ -16,6 +16,7 @@
       -webkit-user-select: none;
       -moz-user-select: none;
       -ms-user-select: none;
+      -webkit-tap-highlight-color: transparent;
     }
 
     html, body {
@@ -190,13 +191,6 @@
       cursor: pointer;
     }
 
-    .fw-item:hover {
-      transform: translateX(6px);
-      border-color: #8e92ff;
-      background: rgba(30, 30, 50, 0.9);
-      box-shadow: -4px 6px 18px rgba(0, 0, 0, 0.5);
-    }
-
     .fw-item.active {
       border-left: 4px solid #6c6eff;
       background: linear-gradient(135deg, rgba(40, 40, 70, 0.9), rgba(25, 25, 45, 0.95));
@@ -255,11 +249,6 @@
       transition: 0.2s;
     }
 
-    .mobile-menu-btn:hover {
-      background: rgba(80, 80, 140, 0.5);
-      border-color: #aaaaff;
-    }
-
     .flasher-card {
       background: rgba(12, 12, 20, 0.65);
       backdrop-filter: blur(14px);
@@ -314,17 +303,11 @@
       transition: transform 0.2s;
     }
 
-    .btn:hover {
-      background: #ffffff;
-      color: #0a0a1a;
+    .btn:active {
+      transform: scale(0.97);
+      background: rgba(255, 255, 255, 0.2);
       border-color: #ffffff;
-      box-shadow: 0 6px 20px rgba(100, 100, 255, 0.4);
-      transform: translateY(-2px);
-    }
-
-    .btn:hover i {
-      color: #0a0a1a;
-      transform: scale(1.05);
+      transition: 0.05s;
     }
 
     .port-section {
@@ -400,6 +383,30 @@
       cursor: not-allowed;
       transform: none;
       filter: grayscale(0.1);
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+      .btn:hover {
+        background: #ffffff;
+        color: #0a0a1a;
+        border-color: #ffffff;
+        box-shadow: 0 6px 20px rgba(100, 100, 255, 0.4);
+        transform: translateY(-2px);
+      }
+      .btn:hover i {
+        color: #0a0a1a;
+        transform: scale(1.05);
+      }
+      .fw-item:hover {
+        transform: translateX(6px);
+        border-color: #8e92ff;
+        background: rgba(30, 30, 50, 0.9);
+        box-shadow: -4px 6px 18px rgba(0, 0, 0, 0.5);
+      }
+      .mobile-menu-btn:hover {
+        background: rgba(80, 80, 140, 0.5);
+        border-color: #aaaaff;
+      }
     }
 
     @media (max-width: 768px) {
