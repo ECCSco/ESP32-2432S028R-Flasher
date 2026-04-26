@@ -304,7 +304,6 @@
     .firmware-list {
       display: flex;
       flex-direction: column;
-      gap: 1rem;
     }
 
     .fw-item {
@@ -313,10 +312,12 @@
       border: 1px solid rgba(100, 110, 190, 0.55);
       padding: 1rem 1.2rem;
       border-radius: 28px;
-      transition: all 0.3s cubic-bezier(0.22, 0.9, 0.35, 1.1);
+      transition: opacity 0.3s ease, max-height 0.3s ease, margin-bottom 0.3s ease, padding-top 0.3s ease, padding-bottom 0.3s ease, border-top-width 0.3s ease, border-bottom-width 0.3s ease;
       cursor: pointer;
       position: relative;
       overflow: hidden;
+      max-height: 500px;
+      margin-bottom: 1rem;
     }
 
     .fw-item::before {
@@ -338,6 +339,16 @@
       box-shadow: 0 0 28px rgba(108, 110, 255, 0.55), inset 0 1px 0 rgba(255,255,255,0.12);
       transform: scale(1.01);
       animation: activeGlow 2s infinite alternate;
+    }
+
+    .fw-item-hidden {
+      opacity: 0;
+      max-height: 0;
+      margin-bottom: 0;
+      padding-top: 0;
+      padding-bottom: 0;
+      border-top-width: 0;
+      border-bottom-width: 0;
     }
 
     @keyframes activeGlow {
@@ -898,6 +909,41 @@
     }
   }
 
+  function applyItemVisibility(item, visible) {
+    const wasHidden = item.classList.contains('fw-item-hidden') || item.style.display === 'none';
+    if (visible) {
+      if (wasHidden) {
+        if (item._visHandler) {
+          item.removeEventListener('transitionend', item._visHandler);
+          item._visHandler = null;
+        }
+        item.style.display = '';
+        item.style.transition = 'none';
+        item.classList.add('fw-item-hidden');
+        void item.offsetHeight;
+        item.style.transition = '';
+        item.classList.remove('fw-item-hidden');
+      }
+    } else {
+      if (!wasHidden) {
+        if (item._visHandler) {
+          item.removeEventListener('transitionend', item._visHandler);
+          item._visHandler = null;
+        }
+        item.classList.add('fw-item-hidden');
+        const handler = (e) => {
+          if (e.target === item && item.classList.contains('fw-item-hidden')) {
+            item.style.display = 'none';
+            item.removeEventListener('transitionend', handler);
+            item._visHandler = null;
+          }
+        };
+        item.addEventListener('transitionend', handler);
+        item._visHandler = handler;
+      }
+    }
+  }
+
   function applyFilters() {
     const term = searchInput.value.toLowerCase();
     document.querySelectorAll('.fw-item[data-manifest]').forEach(item => {
@@ -910,7 +956,7 @@
         let name = item.querySelector('.fw-name')?.innerText?.split(' ')[0] || '';
         if (!name.toLowerCase().includes(term)) show = false;
       }
-      item.style.display = show ? '' : 'none';
+      applyItemVisibility(item, show);
     });
   }
 
