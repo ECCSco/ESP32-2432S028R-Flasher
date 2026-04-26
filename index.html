@@ -312,12 +312,12 @@
       border: 1px solid rgba(100, 110, 190, 0.55);
       padding: 1rem 1.2rem;
       border-radius: 28px;
-      transition: opacity 0.3s ease, max-height 0.3s ease, margin-bottom 0.3s ease, padding-top 0.3s ease, padding-bottom 0.3s ease, border-top-width 0.3s ease, border-bottom-width 0.3s ease;
+      margin-bottom: 1rem;
       cursor: pointer;
       position: relative;
       overflow: hidden;
       max-height: 500px;
-      margin-bottom: 1rem;
+      transition: max-height 0.45s ease, opacity 0.35s ease, padding 0.35s, margin-bottom 0.35s, border-width 0.35s;
     }
 
     .fw-item::before {
@@ -341,14 +341,14 @@
       animation: activeGlow 2s infinite alternate;
     }
 
-    .fw-item-hidden {
-      opacity: 0;
+    .fw-item.hidden {
       max-height: 0;
-      margin-bottom: 0;
+      opacity: 0;
       padding-top: 0;
       padding-bottom: 0;
-      border-top-width: 0;
-      border-bottom-width: 0;
+      margin-bottom: 0;
+      border-width: 0;
+      pointer-events: none;
     }
 
     @keyframes activeGlow {
@@ -909,41 +909,6 @@
     }
   }
 
-  function applyItemVisibility(item, visible) {
-    const wasHidden = item.classList.contains('fw-item-hidden') || item.style.display === 'none';
-    if (visible) {
-      if (wasHidden) {
-        if (item._visHandler) {
-          item.removeEventListener('transitionend', item._visHandler);
-          item._visHandler = null;
-        }
-        item.style.display = '';
-        item.style.transition = 'none';
-        item.classList.add('fw-item-hidden');
-        void item.offsetHeight;
-        item.style.transition = '';
-        item.classList.remove('fw-item-hidden');
-      }
-    } else {
-      if (!wasHidden) {
-        if (item._visHandler) {
-          item.removeEventListener('transitionend', item._visHandler);
-          item._visHandler = null;
-        }
-        item.classList.add('fw-item-hidden');
-        const handler = (e) => {
-          if (e.target === item && item.classList.contains('fw-item-hidden')) {
-            item.style.display = 'none';
-            item.removeEventListener('transitionend', handler);
-            item._visHandler = null;
-          }
-        };
-        item.addEventListener('transitionend', handler);
-        item._visHandler = handler;
-      }
-    }
-  }
-
   function applyFilters() {
     const term = searchInput.value.toLowerCase();
     document.querySelectorAll('.fw-item[data-manifest]').forEach(item => {
@@ -953,10 +918,19 @@
         show = false;
       }
       if (show) {
-        let name = item.querySelector('.fw-name')?.innerText?.split(' ')[0] || '';
+        const nameEl = item.querySelector('.fw-name');
+        let name = '';
+        if (nameEl) {
+          const textNode = nameEl.childNodes[0];
+          name = textNode ? textNode.textContent.trim() : '';
+        }
         if (!name.toLowerCase().includes(term)) show = false;
       }
-      applyItemVisibility(item, show);
+      if (show) {
+        item.classList.remove('hidden');
+      } else {
+        item.classList.add('hidden');
+      }
     });
   }
 
