@@ -312,28 +312,19 @@
       border: 1px solid rgba(100, 110, 190, 0.55);
       padding: 1rem 1.2rem;
       border-radius: 28px;
-      transition: all 0.3s cubic-bezier(0.22, 0.9, 0.35, 1.1);
       cursor: pointer;
       position: relative;
       overflow: hidden;
       margin-bottom: 1rem;
       max-height: 500px;
+      transition: transform 0.3s cubic-bezier(0.22, 0.9, 0.35, 1.1),
+                  background 0.3s, border-color 0.3s, box-shadow 0.3s,
+                  opacity 0.3s, max-height 0.3s, margin-bottom 0.3s,
+                  padding 0.3s, border-width 0.3s;
     }
 
     .fw-item:last-child {
       margin-bottom: 0;
-    }
-
-    .fw-item.hidden {
-      opacity: 0;
-      max-height: 0;
-      padding-top: 0;
-      padding-bottom: 0;
-      margin-bottom: 0;
-      border-width: 0;
-      overflow: hidden;
-      pointer-events: none;
-      transform: scale(0.95);
     }
 
     .fw-item::before {
@@ -357,14 +348,74 @@
       animation: activeGlow 2s infinite alternate;
     }
 
-    .fw-item.hidden.active {
-      animation: none;
-      border-left-width: 0;
-    }
-
     @keyframes activeGlow {
       0% { box-shadow: 0 0 20px rgba(108, 110, 255, 0.4); }
       100% { box-shadow: 0 0 34px rgba(130, 140, 255, 0.7); }
+    }
+
+    .fw-item.hidden {
+      transform: translateX(30px);
+      opacity: 0;
+      max-height: 0;
+      padding-top: 0;
+      padding-bottom: 0;
+      margin-bottom: 0;
+      border-width: 0;
+      overflow: hidden;
+      pointer-events: none;
+      transition: none;
+    }
+
+    .fw-item.hide-left {
+      animation: slideOutLeft 0.3s cubic-bezier(0.22, 0.9, 0.35, 1.1) forwards;
+      pointer-events: none;
+    }
+
+    .fw-item.show-right {
+      animation: slideInRight 0.3s cubic-bezier(0.22, 0.9, 0.35, 1.1) forwards;
+      pointer-events: none;
+    }
+
+    @keyframes slideOutLeft {
+      from {
+        transform: translateX(0);
+        opacity: 1;
+        max-height: 500px;
+        margin-bottom: 1rem;
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+        border-width: 1px;
+      }
+      to {
+        transform: translateX(-30px);
+        opacity: 0;
+        max-height: 0;
+        margin-bottom: 0;
+        padding-top: 0;
+        padding-bottom: 0;
+        border-width: 0;
+      }
+    }
+
+    @keyframes slideInRight {
+      from {
+        transform: translateX(30px);
+        opacity: 0;
+        max-height: 0;
+        margin-bottom: 0;
+        padding-top: 0;
+        padding-bottom: 0;
+        border-width: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+        max-height: 500px;
+        margin-bottom: 1rem;
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+        border-width: 1px;
+      }
     }
 
     .fw-name {
@@ -714,17 +765,11 @@
         color: #0a0a1a;
         transform: scale(1.1) rotate(-3deg);
       }
-      .fw-item:hover {
+      .fw-item:not(.hidden):not(.hide-left):not(.show-right):hover {
         transform: translateX(8px) scale(1.02);
         border-color: #a0a8ff;
         background: rgba(40, 40, 80, 0.95);
         box-shadow: -6px 12px 26px rgba(0, 0, 0, 0.7);
-      }
-      .fw-item.hidden:hover {
-        transform: scale(0.95);
-        border-color: transparent;
-        background: rgba(18, 18, 36, 0.7);
-        box-shadow: none;
       }
       .mobile-menu-btn:hover {
         background: rgba(90, 110, 210, 0.8);
@@ -926,6 +971,41 @@
     }
   }
 
+  function hideFwItem(item) {
+    if (item.classList.contains('hidden') && !item.classList.contains('show-right')) return;
+    if (item.classList.contains('show-right')) {
+      item.classList.remove('show-right');
+    }
+    if (item._hideHandler) {
+      item.removeEventListener('animationend', item._hideHandler);
+    }
+    item.classList.add('hide-left');
+    item._hideHandler = function handler() {
+      item.removeEventListener('animationend', handler);
+      item.classList.remove('hide-left');
+      item.classList.add('hidden');
+    };
+    item.addEventListener('animationend', item._hideHandler);
+  }
+
+  function showFwItem(item) {
+    if (!item.classList.contains('hidden') && !item.classList.contains('hide-left')) return;
+    if (item.classList.contains('hide-left')) {
+      item.classList.remove('hide-left');
+    }
+    if (item._showHandler) {
+      item.removeEventListener('animationend', item._showHandler);
+    }
+    item.classList.remove('hidden');
+    void item.offsetHeight;
+    item.classList.add('show-right');
+    item._showHandler = function handler() {
+      item.removeEventListener('animationend', handler);
+      item.classList.remove('show-right');
+    };
+    item.addEventListener('animationend', item._showHandler);
+  }
+
   function applyFilters() {
     const term = searchInput.value.toLowerCase();
     document.querySelectorAll('.fw-item[data-manifest]').forEach(item => {
@@ -938,7 +1018,20 @@
         let name = item.querySelector('.fw-name')?.innerText?.split(' ')[0] || '';
         if (!name.toLowerCase().includes(term)) show = false;
       }
-      item.classList.toggle('hidden', !show);
+      const isHidden = item.classList.contains('hidden');
+      const isHiding = item.classList.contains('hide-left');
+      const isShowing = item.classList.contains('show-right');
+      if (show) {
+        if (isHidden || isHiding) {
+          showFwItem(item);
+        }
+      } else {
+        if (!isHidden && !isHiding) {
+          hideFwItem(item);
+        } else if (isShowing) {
+          hideFwItem(item);
+        }
+      }
     });
   }
 
